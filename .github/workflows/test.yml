@@ -15,4 +15,6 @@ jobs:
       - name: Validate launcher invariants
         shell: powershell
         run: .\tests\Test-Launcher.ps1
-
+      - name: Validate evidence integrity
+        shell: powershell
+        run: .\tests\Test-Evidence.ps1

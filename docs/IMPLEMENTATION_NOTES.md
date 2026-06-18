@@ -97,7 +97,8 @@ prototype adds none of them.
   this integration uses HTTP/CONNECT only.
 - Provider availability, identity registration, payment state, and backend
   control-plane behavior are external dependencies.
-- The tested identity registration ended as `Unregistered` with backend log
-  evidence `no contract code at given address`; therefore provider-path,
-  DNS-through-provider, WebRTC packet, and crash-after-connect tests remain
-  blocked.
+- Creating a fresh identity during the first run ended as `Unregistered` with
+  backend log evidence `no contract code at given address`. A later run used a
+  separately supplied registered identity and completed provider-path, DNS,
+  WebRTC, and crash-after-connect validation. No identity key material or
+  password was retained in evidence or the repository.

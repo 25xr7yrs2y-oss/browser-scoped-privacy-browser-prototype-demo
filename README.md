@@ -6,11 +6,12 @@ system proxy, DNS servers, firewall, or route table.
 
 ## Status
 
-The integration layer is implemented. Packet capture confirms fail-closed
-behavior with the backend absent and confirms that external `curl` and
-PowerShell traffic remain direct. Provider-path validation is blocked because
-the test identity registration failed, so browser-only provider routing is not
-claimed. See `docs/VALIDATION_RESULTS.md`.
+The integration layer is implemented. Packet capture confirms browser payload
+routing through the loopback backend and a Mysterium provider, no direct
+browser TCP/DNS/UDP path, fail-closed behavior before launch and after backend
+termination, and unaffected external `curl`/PowerShell traffic. Packaging,
+reboot, and true standard-user validation gaps remain. See
+`docs/VALIDATION_RESULTS.md`.
 
 ## Architecture
 
@@ -51,11 +52,15 @@ upstream blocker, not hidden by this launcher.
 
 ## Run
 
-From a non-administrator PowerShell prompt:
+From a PowerShell prompt in a user-writable unpacked bundle:
 
 ```powershell
 .\Start-PrivacyBrowser.ps1
 ```
+
+The userspace proxy path is intended to work without elevation, but the live
+provider run used Administrator and the upstream installer requires elevation.
+A genuine standard-user run remains a validation gap.
 
 The backend opens its loopback management page. Create/import an identity and
 connect to a provider. The launcher waits until both the backend API reports
@@ -77,6 +82,7 @@ an unrelated policy file. The policy affects only this browser tree.
 ```powershell
 .\tests\Test-Configuration.ps1
 .\tests\Test-Launcher.ps1
+.\tests\Test-Evidence.ps1
 .\validation\Invoke-Validation.ps1 -ModifiedBrowserExe .\vendor\mullvad-browser\mullvadbrowser.exe
 ```
 

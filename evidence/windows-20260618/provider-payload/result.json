@@ -1,0 +1,13 @@
+﻿{
+    "directPublicIp":  "54.168.34.136",
+    "proxyPublicIp":  "64.110.102.90",
+    "listenerAddress":  "127.0.0.1",
+    "listenerOwner":  "C:\\Users\\Administrator\\Desktop\\privacy-browser-live\\myst-lmprove\\resources\\app.asar.unpacked\\node_modules\\@mysteriumnetwork\\node\\bin\\win\\x64\\myst.exe",
+    "browserTcpRecords":  433,
+    "browserProxyRecords":  173,
+    "browserDirectRecords":  0,
+    "browserDnsRecords":  0,
+    "browserUdpRecords":  0,
+    "browserNonLoopbackUdpRecords":  0,
+    "backendTcpRecords":  327
+}
