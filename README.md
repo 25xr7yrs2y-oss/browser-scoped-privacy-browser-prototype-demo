@@ -6,9 +6,11 @@ system proxy, DNS servers, firewall, or route table.
 
 ## Status
 
-The integration layer is implemented and locally testable. A real provider
-session and packet-capture run are still required before calling browser-only
-routing validated. See `docs/VALIDATION_RESULTS.md` for the current evidence.
+The integration layer is implemented. Packet capture confirms fail-closed
+behavior with the backend absent and confirms that external `curl` and
+PowerShell traffic remain direct. Provider-path validation is blocked because
+the test identity registration failed, so browser-only provider routing is not
+claimed. See `docs/VALIDATION_RESULTS.md`.
 
 ## Architecture
 
@@ -40,6 +42,12 @@ vendor/
 ```
 
 Other layouts can be supplied with launcher parameters.
+
+Do not leave the current `myst-lmprove` CI installer installed. Testing found
+that it creates an automatic `MysteriumVPNSupervisor` service even though the
+proxy-mode runtime does not need it. Use a copied/unpacked application tree and
+verify that the service is absent before testing. This packaging defect is an
+upstream blocker, not hidden by this launcher.
 
 ## Run
 

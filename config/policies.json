@@ -60,7 +60,15 @@
         "Value": true,
         "Status": "locked"
       },
-      "media.peerconnection.ice.proxy_only": {
+      "media.peerconnection.ice.default_address_only": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "media.peerconnection.ice.proxy_only_if_behind_proxy": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "media.peerconnection.ice.relay_only": {
         "Value": true,
         "Status": "locked"
       },

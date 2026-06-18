@@ -1,0 +1,19 @@
+{
+    "browserExitObserved":  true,
+    "screenshotExists":  false,
+    "screenshotBytes":  0,
+    "socketRecordCount":  309,
+    "directSocketCount":  0,
+    "loopbackSocketCount":  174,
+    "directSockets":  [
+
+                      ],
+    "services":  {
+                     "Name":  "MysteriumVPNSupervisor",
+                     "State":  "Running",
+                     "StartMode":  "Auto",
+                     "PathName":  "C:\\Users\\Administrator\\Desktop\\privacy-browser-live\\myst-lmprove\\resources\\app.asar.unpacked\\node_modules\\@mysteriumnetwork\\node\\bin\\win\\x64\\myst_supervisor.exe -winservice",
+                     "ProcessId":  1876
+                 },
+    "evidencePath":  "C:\\Users\\Administrator\\Desktop\\privacy-browser-live\\evidence-fail-closed"
+}

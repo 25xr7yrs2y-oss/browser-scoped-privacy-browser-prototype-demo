@@ -14,6 +14,7 @@ Assert-Equal $p.Proxy.Locked $true "Proxy policy must be locked"
 Assert-Equal $p.Preferences."network.trr.mode".Value 5 "Firefox DoH must be disabled"
 Assert-Equal $p.Preferences."network.dns.disablePrefetch".Value $true "DNS prefetch must be disabled"
 Assert-Equal $p.Preferences."media.peerconnection.enabled".Value $false "WebRTC must be disabled"
+Assert-Equal $p.Preferences."media.peerconnection.ice.proxy_only_if_behind_proxy".Value $true "WebRTC defense must honor the browser proxy"
 Assert-Equal $p.Preferences."privacy.resistFingerprinting".Value $true "RFP must be enabled"
 Assert-Equal $p.Preferences."privacy.resistFingerprinting.letterboxing".Value $true "Letterboxing must be enabled"
 
@@ -22,4 +23,3 @@ foreach ($name in $p.Preferences.PSObject.Properties.Name) {
 }
 
 Write-Host "PASS: policy and privacy invariants are locked."
-

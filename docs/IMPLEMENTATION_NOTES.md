@@ -9,6 +9,23 @@ enterprise policy, isolated profile, backend lifecycle, and validation tools.
 This avoids maintaining a full Firefox fork before the routing architecture is
 proven.
 
+Exact source checked: branch `mullvad-browser-140.12.0esr-15.0-1`, commit
+`ba34b2b615afc4dff62f5b9db4be8f04e32f2602`. Source findings:
+
+- `001-base-profile.js` enables RFP, canvas randomization, letterboxing,
+  first-party isolation, disabled telemetry, disabled predictor/prefetch/DNS
+  prefetch, and defense-in-depth WebRTC ICE restrictions.
+- `000-mullvad-browser.js` enables Mullvad DoH with `network.trr.mode=3`; this
+  prototype deliberately overrides it with locked mode 5 because a browser DoH
+  connection must not bypass the local HTTP proxy model.
+- Mullvad updater URLs and automatic-update defaults remain in source; the
+  prototype's `DisableAppUpdate` policy prevents an unvalidated version from
+  replacing the tested build.
+- Enterprise policy source and `test_proxy.js` confirm manual HTTP/SSL address,
+  all-protocol HTTP proxy, passthrough, and locked proxy behavior used here.
+- No Tor daemon/control-port source path was present in the selected sparse
+  runtime areas; Tor issue references remain in inherited hardening comments.
+
 ## Backend source audit
 
 Audited branch: `25xr7yrs2y-oss/myst-lmprove@227d63b`, branch
@@ -37,6 +54,17 @@ Audited branch: `25xr7yrs2y-oss/myst-lmprove@227d63b`, branch
 - Lifecycle: Electron owns the Myst child and its quit path calls node stop.
   The wrapper additionally calls `/api/node/stop` and terminates only the
   backend process tree that it started.
+
+### Packaging discrepancy found in live testing
+
+The successful CI artifact for commit `227d63b` installs an automatic Windows
+service named `MysteriumVPNSupervisor`. This contradicts the fork README's
+"No supervisor install" claim. The tested service executable was
+`resources/app.asar.unpacked/node_modules/@mysteriumnetwork/node/bin/win/x64/myst_supervisor.exe
+-winservice`. The application runtime still selected the expected userspace
+proxyclient path, but the installer is not acceptable for a browser-scoped
+package as-is. The test installation was uninstalled and the service was
+verified absent.
 
 ## Tor-specific classification
 
@@ -69,4 +97,7 @@ prototype adds none of them.
   this integration uses HTTP/CONNECT only.
 - Provider availability, identity registration, payment state, and backend
   control-plane behavior are external dependencies.
-
+- The tested identity registration ended as `Unregistered` with backend log
+  evidence `no contract code at given address`; therefore provider-path,
+  DNS-through-provider, WebRTC packet, and crash-after-connect tests remain
+  blocked.

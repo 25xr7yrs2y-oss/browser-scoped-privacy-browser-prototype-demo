@@ -1,0 +1,13 @@
+{
+    "directPublicIp":  "54.168.34.136",
+    "rootPids":  [
+                     3376,
+                     2620,
+                     3352
+                 ],
+    "records":  80,
+    "directRecords":  40,
+    "proxy4449Records":  0,
+    "edgeDomBytes":  0,
+    "captureBytes":  7472376
+}
