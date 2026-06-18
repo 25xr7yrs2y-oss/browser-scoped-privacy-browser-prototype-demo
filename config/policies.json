@@ -1,0 +1,113 @@
+{
+  "policies": {
+    "DisableAppUpdate": true,
+    "DisableFirefoxAccounts": true,
+    "DisableFirefoxStudies": true,
+    "DisableFormHistory": true,
+    "DisablePocket": true,
+    "DisableTelemetry": true,
+    "DontCheckDefaultBrowser": true,
+    "NoDefaultBookmarks": true,
+    "OfferToSaveLogins": false,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "Proxy": {
+      "Mode": "manual",
+      "HTTPProxy": "127.0.0.1:4449",
+      "SSLProxy": "127.0.0.1:4449",
+      "UseHTTPProxyForAllProtocols": true,
+      "Passthrough": "localhost, 127.0.0.1",
+      "Locked": true
+    },
+    "Preferences": {
+      "browser.newtabpage.activity-stream.feeds.telemetry": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.newtabpage.activity-stream.telemetry": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.ping-centre.telemetry": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.search.suggest.enabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.send_pings": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.urlbar.speculativeConnect.enabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "datareporting.healthreport.uploadEnabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "datareporting.policy.dataSubmissionEnabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "media.peerconnection.enabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "media.peerconnection.ice.no_host": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "media.peerconnection.ice.proxy_only": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "network.dns.disablePrefetch": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "network.http.speculative-parallel-limit": {
+        "Value": 0,
+        "Status": "locked"
+      },
+      "network.predictor.enabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "network.prefetch-next": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "network.trr.mode": {
+        "Value": 5,
+        "Status": "locked"
+      },
+      "privacy.firstparty.isolate": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "privacy.resistFingerprinting": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "privacy.resistFingerprinting.letterboxing": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "security.ssl.enable_ocsp_stapling": {
+        "Value": true,
+        "Status": "locked"
+      },
+      "toolkit.telemetry.enabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "toolkit.telemetry.unified": {
+        "Value": false,
+        "Status": "locked"
+      }
+    }
+  }
+}

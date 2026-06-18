@@ -1,0 +1,6 @@
+/evidence/
+/state/
+/vendor/
+*.etl
+*.pcap
+*.pcapng
