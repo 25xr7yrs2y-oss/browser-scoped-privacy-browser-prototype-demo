@@ -2,6 +2,11 @@
 
 ## Current status
 
+> The packet captures below predate the native UI migration. They remain
+> evidence for the unchanged browser policy and 4449 data plane, but they do
+> not constitute a live Windows run of `PrivacyBrowser.App.exe`. The current
+> migration scope validates compilation and architecture invariants only.
+
 **Prototype works for the tested browser-scoped routing paths, with packaging
 and operational gaps.** Tests used Windows Server 2022, Mullvad Browser
 15.0.14, and the backend CI artifact for commit `227d63b`. A supplied registered
@@ -11,7 +16,9 @@ identity allowed the previously blocked provider run. Direct host egress was
 | Scenario | Actual result | Evidence | Result |
 |---|---|---|---|
 | Configuration invariants | Locked loopback proxy, DoH/DNS prefetch off, WebRTC off, RFP and letterboxing on | `tests/Test-Configuration.ps1` | Pass |
-| Launcher safety invariants | Listener ownership and lifecycle checks present; forbidden system network mutation absent | `tests/Test-Launcher.ps1` | Pass |
+| Native application build | .NET 8 WPF source compiles and publishes as a Windows executable | GitHub Actions `Build.ps1` | Pending current workflow |
+| Launcher safety invariants | Delegates to the native application; no web UI URL/API or system network mutation | `tests/Test-Launcher.ps1` | Pass by source invariant |
+| Native architecture invariants | Direct `myst.exe` ownership, disabled web UI, loopback-only daemon control, 4449 ownership check, upper-right Controls entry | `tests/Test-NativeArchitecture.ps1` | Pass by source invariant |
 | Evidence integrity | Retained capture hashes and recorded routing counters match the documented results | `tests/Test-Evidence.ps1` | Pass |
 | S1 other apps unaffected | Exact PID trees for `curl` and `Invoke-WebRequest`: 80 socket records, 40 direct records to `162.159.140.220:443`, zero records involving 4449; direct IP `54.168.34.136`. An exploratory Edge run loaded a 564-byte page with no 4449 use, but its exact-PID rerun under SYSTEM did not render. | `evidence/windows-20260618/other-apps/` | Pass for curl/IWR; Edge evidence limited |
 | S2 browser payload scoped | Proxy listener owned by bundled `myst.exe` on `127.0.0.1:4449`. Browser: 433 TCP observations, 173 established proxy records, zero non-loopback records. Direct and proxy public IPs differed. | `evidence/windows-20260618/provider-payload/` | Pass |

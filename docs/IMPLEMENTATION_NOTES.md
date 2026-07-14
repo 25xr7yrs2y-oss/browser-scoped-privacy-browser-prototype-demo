@@ -31,8 +31,10 @@ Exact source checked: branch `mullvad-browser-140.12.0esr-15.0-1`, commit
 Audited branch: `25xr7yrs2y-oss/myst-lmprove@227d63b`, branch
 `custom-proxy-build`.
 
-- Desktop entry: Electron `src/main/index.tsx` starts a loopback web server and
-  Myst node.
+- Previous desktop entry: Electron `src/main/index.tsx` started a loopback web
+  server and Myst node. The prototype no longer invokes that executable during
+  normal operation; its native WPF controller starts the bundled `myst.exe`
+  directly with `--ui.enable=false`.
 - Node entry: `src/main/node/mysteriumNode.ts` launches `myst.exe` with
   `--usermode --proxymode --proxy.bind.address=127.0.0.1 --consumer`.
 - Protocol: `custom-node/services/wireguard/endpoint/proxyclient/handler.go`
@@ -51,9 +53,29 @@ Audited branch: `25xr7yrs2y-oss/myst-lmprove@227d63b`, branch
   provider negotiation use the backend's direct HTTP/P2P clients. These direct
   connections are allowed, must be attributed to backend processes, and are
   not browser payload.
-- Lifecycle: Electron owns the Myst child and its quit path calls node stop.
-  The wrapper additionally calls `/api/node/stop` and terminates only the
-  backend process tree that it started.
+- Lifecycle: `PrivacyBrowser.App.exe` owns the Myst child. Its close path calls
+  the daemon's existing `POST /stop` endpoint on port 44050, waits for graceful
+  exit, and terminates only the process tree it started if graceful shutdown
+  times out. The removed `/api/node/stop` path belonged to the port 44051 web UI.
+
+## Native UI migration
+
+The previous launcher made port 44051 part of normal operation in four ways:
+it passed `--web-ui-port=44051`, directed the user to the page, polled
+`/api/status`, and called `/api/node/stop`. The native WPF application replaces
+all four dependencies:
+
+- WPF renders the control window without HTML, WebView, or a browser.
+- UI actions call `BackendController` in the same process.
+- `BackendController` starts the underlying node executable directly and uses
+  the pre-existing loopback-only TequilAPI on port 44050.
+- `BrowserLauncher` preserves locked policy installation, isolated profiles,
+  and expected-owner validation for the 4449 data-plane proxy.
+
+No replacement UI port was introduced. The port 44050 daemon API was retained
+because it is the upstream backend's existing control contract; replacing that
+contract with a named pipe requires coordinated changes to `myst.exe` and is
+outside this integration repository. See `NATIVE_UI_ARCHITECTURE.md`.
 
 ### Packaging discrepancy found in live testing
 

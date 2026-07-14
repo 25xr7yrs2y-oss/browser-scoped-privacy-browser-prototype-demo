@@ -1,8 +1,9 @@
 # Browser-Scoped Privacy Browser Prototype
 
-This Windows-only prototype combines an unpacked Mullvad Browser with the
-`custom-proxy-build` release of `myst-lmprove`. It does not modify the Windows
-system proxy, DNS servers, firewall, or route table.
+This Windows-only prototype combines a native .NET/WPF control application,
+an unpacked Mullvad Browser, and the `custom-proxy-build` Myst node from
+`myst-lmprove`. It does not modify the Windows system proxy, DNS servers,
+firewall, or route table.
 
 ## Status
 
@@ -16,6 +17,11 @@ reboot, and true standard-user validation gaps remain. See
 ## Architecture
 
 ```text
+PrivacyBrowser.App.exe (native WPF window)
+  -> in-process BackendController
+  -> starts myst.exe directly with its web UI disabled
+  -> Myst TequilAPI control endpoint at 127.0.0.1:44050
+
 Mullvad Browser (isolated profile)
   -> locked HTTP/HTTPS proxy policy at 127.0.0.1:4449
   -> myst-lmprove userspace WireGuard netstack
@@ -25,6 +31,13 @@ Mullvad Browser (isolated profile)
 myst-lmprove control-plane connections -> direct Internet (allowed and recorded)
 all other Windows applications          -> unchanged Windows network path
 ```
+
+The application does not start the Electron `MysteriumVPN.exe` shell, does not
+start or browse to `127.0.0.1:44051`, and does not host HTML for UI control.
+WPF event handlers call an in-process controller; only the existing Myst daemon
+control contract on `44050` remains. Port `4449` remains intentionally because
+it is the browser's data-plane proxy, not a UI transport. See
+`docs/NATIVE_UI_ARCHITECTURE.md` for the migration analysis and trust boundary.
 
 The browser never receives a direct-fallback proxy configuration. If the
 backend disappears, Firefox requests continue targeting the dead loopback
@@ -39,7 +52,7 @@ Place unpacked dependencies under `vendor`:
 ```text
 vendor/
   mullvad-browser/mullvadbrowser.exe
-  myst-lmprove/MysteriumVPN.exe
+  myst-lmprove/resources/app.asar.unpacked/node_modules/@mysteriumnetwork/node/bin/win/x64/myst.exe
 ```
 
 Other layouts can be supplied with launcher parameters.
@@ -49,6 +62,17 @@ that it creates an automatic `MysteriumVPNSupervisor` service even though the
 proxy-mode runtime does not need it. Use a copied/unpacked application tree and
 verify that the service is absent before testing. This packaging defect is an
 upstream blocker, not hidden by this launcher.
+
+## Build
+
+Build the native Windows application with the .NET 8 SDK:
+
+```powershell
+.\Build.ps1
+```
+
+This publishes the WPF app to `app\PrivacyBrowser.App.exe`. Use
+`-SelfContained` if the target machine does not have the .NET 8 Desktop Runtime.
 
 ## Run
 
@@ -62,14 +86,16 @@ The userspace proxy path is intended to work without elevation, but the live
 provider run used Administrator and the upstream installer requires elevation.
 A genuine standard-user run remains a validation gap.
 
-The backend opens its loopback management page. Create/import an identity and
-connect to a provider. The launcher waits until both the backend API reports
-`CONNECTED` and port 4449 is owned by a process inside the configured backend
-directory. Only then does it launch the browser.
+The application opens its own native window. Use the **Controls** button in the
+upper-right to create/register an identity, load providers, connect, disconnect,
+and launch the browser. The browser launch button is enabled only after the
+backend reports `CONNECTED`; launch also verifies that the expected backend
+process owns the loopback proxy listener on port 4449.
 
-Use `-BackendReadyTimeoutSeconds 0` to start the browser immediately for the
-mandatory unavailable-at-launch fail-closed test. Use `-KeepBackendRunning`
-only for debugging; the default owns and cleans up the backend it started.
+Use `-KeepBackendRunning` only for debugging; by default the native application
+owns and cleans up the `myst.exe` process it started. Use `-SkipBackendLaunch`
+only when deliberately adopting an already-running development backend on
+`127.0.0.1:44050`.
 
 ## Install the policy
 
@@ -82,6 +108,7 @@ an unrelated policy file. The policy affects only this browser tree.
 ```powershell
 .\tests\Test-Configuration.ps1
 .\tests\Test-Launcher.ps1
+.\tests\Test-NativeArchitecture.ps1
 .\tests\Test-Evidence.ps1
 .\validation\Invoke-Validation.ps1 -ModifiedBrowserExe .\vendor\mullvad-browser\mullvadbrowser.exe
 ```
@@ -99,4 +126,8 @@ Read `docs/VALIDATION_PLAN.md` before interpreting the result.
 - The Mysterium provider must be selected and connected before browsing.
 - The launcher rejects non-loopback proxy settings and unexpected owners of
   port 4449.
+- The native app binds no UI listener and never starts the legacy port 44051
+  web server.
+- The remaining port 44050 is the Myst daemon's existing loopback-only control
+  API. It is explicitly accessed without the Windows/system HTTP proxy.
 - A malicious or compromised backend remains inside the trust boundary.

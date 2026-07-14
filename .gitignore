@@ -1,4 +1,7 @@
 /state/
 /vendor/
+/app/
+**/bin/
+**/obj/
 *.etl
 *.pcap

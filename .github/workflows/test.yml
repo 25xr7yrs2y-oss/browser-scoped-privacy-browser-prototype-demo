@@ -9,12 +9,27 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build native Windows application
+        shell: powershell
+        run: .\Build.ps1
       - name: Validate locked policy
         shell: powershell
         run: .\tests\Test-Configuration.ps1
       - name: Validate launcher invariants
         shell: powershell
         run: .\tests\Test-Launcher.ps1
+      - name: Validate native architecture invariants
+        shell: powershell
+        run: .\tests\Test-NativeArchitecture.ps1
       - name: Validate evidence integrity
         shell: powershell
         run: .\tests\Test-Evidence.ps1
+      - name: Upload native application
+        uses: actions/upload-artifact@v4
+        with:
+          name: privacy-browser-native-win-x64
+          path: app/
+          if-no-files-found: error
