@@ -1,6 +1,8 @@
 /state/
 /vendor/
 /app/
+/release/
+/work/
 **/bin/
 **/obj/
 *.etl

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$NativeAppExe = (Join-Path $PSScriptRoot "app\PrivacyBrowser.App.exe"),
+    [string]$NativeAppExe = (Join-Path $PSScriptRoot "app\PrivacyBrowser.exe"),
     [string]$BrowserExe = (Join-Path $PSScriptRoot "vendor\mullvad-browser\mullvadbrowser.exe"),
     [string]$BackendExe = (Join-Path $PSScriptRoot "vendor\myst-lmprove\resources\app.asar.unpacked\node_modules\@mysteriumnetwork\node\bin\win\x64\myst.exe"),
     [string]$ProfilePath = (Join-Path $PSScriptRoot "state\profile"),

@@ -1,0 +1,35 @@
+name: Release package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-release-package:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build complete portable release
+        shell: pwsh
+        env:
+          MYST_RELEASE_TOKEN: ${{ secrets.MYST_RELEASE_TOKEN }}
+        run: .\Package-Release.ps1
+      - name: Verify release package
+        shell: pwsh
+        run: .\tests\Test-ReleasePackage.ps1
+      - name: Upload verified release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrivacyBrowser-1.0.0-release-assets
+          path: release/*
+          if-no-files-found: error
+          compression-level: 0

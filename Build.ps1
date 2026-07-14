@@ -11,6 +11,10 @@ $project = Join-Path $PSScriptRoot "src\PrivacyBrowser.App\PrivacyBrowser.App.cs
 $output = Join-Path $PSScriptRoot "app"
 $selfContainedValue = $SelfContained.IsPresent.ToString().ToLowerInvariant()
 
+if (Test-Path -LiteralPath $output) {
+    Remove-Item -LiteralPath $output -Recurse -Force
+}
+
 dotnet publish $project `
     --configuration $Configuration `
     --runtime $Runtime `

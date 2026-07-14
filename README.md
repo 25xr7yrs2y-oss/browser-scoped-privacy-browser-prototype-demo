@@ -1,23 +1,23 @@
-# Browser-Scoped Privacy Browser Prototype
+# Privacy Browser
 
-This Windows-only prototype combines a native .NET/WPF control application,
+Version 1.0.0 is a Windows x64 release combining a native .NET/WPF control application,
 an unpacked Mullvad Browser, and the `custom-proxy-build` Myst node from
 `myst-lmprove`. It does not modify the Windows system proxy, DNS servers,
 firewall, or route table.
 
 ## Status
 
-The integration layer is implemented. Packet capture confirms browser payload
+The native integration and portable release packaging are implemented. Packet capture confirms browser payload
 routing through the loopback backend and a Mysterium provider, no direct
 browser TCP/DNS/UDP path, fail-closed behavior before launch and after backend
-termination, and unaffected external `curl`/PowerShell traffic. Packaging,
+termination, and unaffected external `curl`/PowerShell traffic. Code signing,
 reboot, and true standard-user validation gaps remain. See
 `docs/VALIDATION_RESULTS.md`.
 
 ## Architecture
 
 ```text
-PrivacyBrowser.App.exe (native WPF window)
+PrivacyBrowser.exe (native WPF window)
   -> in-process BackendController
   -> starts myst.exe directly with its web UI disabled
   -> Myst TequilAPI control endpoint at 127.0.0.1:44050
@@ -71,16 +71,36 @@ Build the native Windows application with the .NET 8 SDK:
 .\Build.ps1
 ```
 
-This publishes the WPF app to `app\PrivacyBrowser.App.exe`. Use
+This publishes the WPF app to `app\PrivacyBrowser.exe`. Use
 `-SelfContained` if the target machine does not have the .NET 8 Desktop Runtime.
+
+The executable embeds the official multi-resolution Windows icon and reports
+file/product version `1.0.0`.
+
+## Release package
+
+Maintainers can build the complete self-contained Windows x64 bundle with:
+
+```powershell
+$env:MYST_RELEASE_TOKEN = "<token with read access to the pinned backend release>"
+.\Package-Release.ps1
+.\tests\Test-ReleasePackage.ps1
+```
+
+This creates `PrivacyBrowser-1.0.0-windows-x64-portable.zip`, its SHA-256
+manifest, and the corresponding `myst-lmprove` source archive. The upstream
+installers are downloaded at pinned hashes and extracted; they are never run.
 
 ## Run
 
-From a PowerShell prompt in a user-writable unpacked bundle:
+From a source/development checkout:
 
 ```powershell
 .\Start-PrivacyBrowser.ps1
 ```
+
+For the release package, extract the ZIP to a user-writable directory and
+double-click `PrivacyBrowser.exe` in the extracted top-level folder.
 
 The userspace proxy path is intended to work without elevation, but the live
 provider run used Administrator and the upstream installer requires elevation.
@@ -109,6 +129,7 @@ an unrelated policy file. The policy affects only this browser tree.
 .\tests\Test-Configuration.ps1
 .\tests\Test-Launcher.ps1
 .\tests\Test-NativeArchitecture.ps1
+.\tests\Test-ReleaseMetadata.ps1
 .\tests\Test-Evidence.ps1
 .\validation\Invoke-Validation.ps1 -ModifiedBrowserExe .\vendor\mullvad-browser\mullvadbrowser.exe
 ```

@@ -4,7 +4,7 @@
 
 > The packet captures below predate the native UI migration. They remain
 > evidence for the unchanged browser policy and 4449 data plane, but they do
-> not constitute a live Windows run of `PrivacyBrowser.App.exe`. The current
+> not constitute a live Windows run of `PrivacyBrowser.exe`. The current
 > migration scope validates compilation and architecture invariants only.
 
 **Prototype works for the tested browser-scoped routing paths, with packaging

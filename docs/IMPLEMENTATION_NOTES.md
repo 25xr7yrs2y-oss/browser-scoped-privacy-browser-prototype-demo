@@ -53,7 +53,7 @@ Audited branch: `25xr7yrs2y-oss/myst-lmprove@227d63b`, branch
   provider negotiation use the backend's direct HTTP/P2P clients. These direct
   connections are allowed, must be attributed to backend processes, and are
   not browser payload.
-- Lifecycle: `PrivacyBrowser.App.exe` owns the Myst child. Its close path calls
+- Lifecycle: `PrivacyBrowser.exe` owns the Myst child. Its close path calls
   the daemon's existing `POST /stop` endpoint on port 44050, waits for graceful
   exit, and terminates only the process tree it started if graceful shutdown
   times out. The removed `/api/node/stop` path belonged to the port 44051 web UI.

@@ -3,7 +3,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $launcher = Get-Content (Join-Path $root "Start-PrivacyBrowser.ps1") -Raw
 
 $required = @(
-    'app\PrivacyBrowser.App.exe',
+    'app\PrivacyBrowser.exe',
     '"--bundle-root", $PSScriptRoot',
     '"--browser-exe", (Resolve-Path $BrowserExe).Path',
     '"--backend-exe", $BackendExe',
