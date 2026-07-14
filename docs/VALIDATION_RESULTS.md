@@ -16,7 +16,7 @@ identity allowed the previously blocked provider run. Direct host egress was
 | Scenario | Actual result | Evidence | Result |
 |---|---|---|---|
 | Configuration invariants | Locked loopback proxy, DoH/DNS prefetch off, WebRTC off, RFP and letterboxing on | `tests/Test-Configuration.ps1` | Pass |
-| Native application build | .NET 8 WPF source compiles and publishes as a Windows executable | GitHub Actions `Build.ps1` | Pending current workflow |
+| Native application build | .NET 8 WPF source compiles and publishes as a Windows executable | GitHub Actions `Build.ps1` | Pass |
 | Launcher safety invariants | Delegates to the native application; no web UI URL/API or system network mutation | `tests/Test-Launcher.ps1` | Pass by source invariant |
 | Native architecture invariants | Direct `myst.exe` ownership, disabled web UI, loopback-only daemon control, 4449 ownership check, upper-right Controls entry | `tests/Test-NativeArchitecture.ps1` | Pass by source invariant |
 | Evidence integrity | Retained capture hashes and recorded routing counters match the documented results | `tests/Test-Evidence.ps1` | Pass |
