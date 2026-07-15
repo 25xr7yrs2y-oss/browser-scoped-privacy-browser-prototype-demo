@@ -1,6 +1,6 @@
 # Privacy Browser
 
-Version 1.0.0 is a Windows x64 release combining a native .NET/WPF control application,
+Version 1.0.1 is a Windows x64 release combining a native .NET/WPF control application,
 an unpacked Mullvad Browser, and the `custom-proxy-build` Myst node from
 `myst-lmprove`. It does not modify the Windows system proxy, DNS servers,
 firewall, or route table.
@@ -75,7 +75,8 @@ This publishes the WPF app to `app\PrivacyBrowser.exe`. Use
 `-SelfContained` if the target machine does not have the .NET 8 Desktop Runtime.
 
 The executable embeds the official multi-resolution Windows icon and reports
-file/product version `1.0.0`.
+file/product version `1.0.1`. The native WPF window uses the matching embedded
+PNG resource so Windows Imaging Component can decode it reliably at startup.
 
 ## Release package
 
@@ -87,7 +88,7 @@ $env:MYST_RELEASE_TOKEN = "<token with read access to the pinned backend release
 .\tests\Test-ReleasePackage.ps1
 ```
 
-This creates `PrivacyBrowser-1.0.0-windows-x64-portable.zip`, its SHA-256
+This creates `PrivacyBrowser-1.0.1-windows-x64-portable.zip`, its SHA-256
 manifest, and the corresponding `myst-lmprove` source archive. The upstream
 installers are downloaded at pinned hashes and extracted; they are never run.
 

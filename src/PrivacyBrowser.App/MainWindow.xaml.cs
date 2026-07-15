@@ -18,7 +18,7 @@ public partial class MainWindow : Window
     public MainWindow(AppOptions options)
     {
         InitializeComponent();
-        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.1";
         Title = $"Privacy Browser {version}";
         _backend = new BackendController(options);
         _browser = new BrowserLauncher(options, _backend);

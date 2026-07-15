@@ -24,7 +24,7 @@ jobs:
       - name: Validate native architecture invariants
         shell: powershell
         run: .\tests\Test-NativeArchitecture.ps1
-      - name: Validate version and embedded icon
+      - name: Validate version and WPF/embedded icons
         shell: powershell
         run: .\tests\Test-ReleaseMetadata.ps1
       - name: Validate evidence integrity
@@ -33,6 +33,6 @@ jobs:
       - name: Upload native application
         uses: actions/upload-artifact@v4
         with:
-          name: PrivacyBrowser-1.0.0-windows-x64-app
+          name: PrivacyBrowser-1.0.1-windows-x64-app
           path: app/
           if-no-files-found: error

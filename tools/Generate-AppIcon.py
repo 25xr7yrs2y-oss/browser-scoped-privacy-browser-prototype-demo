@@ -24,7 +24,9 @@ def main() -> None:
     png_dir = args.output / "Icons"
     png_dir.mkdir(parents=True, exist_ok=True)
 
-    shutil.copy2(args.source, args.output / "OfficialIconSource.png")
+    approved_source = args.output / "OfficialIconSource.png"
+    if args.source.resolve() != approved_source.resolve():
+        shutil.copy2(args.source, approved_source)
     with Image.open(args.source) as source:
         source.load()
         rgb = source.convert("RGB")
@@ -48,7 +50,10 @@ def main() -> None:
             args.output / "AppIcon.ico",
             format="ICO",
             sizes=[(size, size) for size in ICO_SIZES],
-            bitmap_format="png",
+            # WPF's Windows Imaging Component decoder rejects the PNG-compressed
+            # ICO produced by Pillow on supported Windows builds. DIB frames are
+            # larger but decode reliably in both WPF and the Windows shell.
+            bitmap_format="bmp",
         )
 
 

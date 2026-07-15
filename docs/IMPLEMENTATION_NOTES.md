@@ -77,6 +77,19 @@ because it is the upstream backend's existing control contract; replacing that
 contract with a named pipe requires coordinated changes to `myst.exe` and is
 outside this integration repository. See `NATIVE_UI_ARCHITECTURE.md`.
 
+## Windows icon resources
+
+The executable icon and WPF window icon have separate resource requirements.
+`AppIcon.ico` is embedded in the PE for File Explorer, shortcuts, and executable
+metadata. Its frames use Windows-compatible DIB encoding; the previous
+PNG-compressed ICO was accepted by PE tooling but rejected by Windows Imaging
+Component with `0x88982F60` when WPF loaded the XAML window.
+
+The WPF `Window.Icon` uses the matching embedded 256 px PNG directly. Windows
+CI decodes both the PNG and every ICO frame through WPF's actual
+`BitmapDecoder`, preventing a shell-only icon check from missing another BAML
+startup failure.
+
 ### Packaging discrepancy found in live testing
 
 The successful CI artifact for commit `227d63b` installs an automatic Windows

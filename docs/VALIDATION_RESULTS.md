@@ -4,8 +4,28 @@
 
 > The packet captures below predate the native UI migration. They remain
 > evidence for the unchanged browser policy and 4449 data plane, but they do
-> not constitute a live Windows run of `PrivacyBrowser.exe`. The current
-> migration scope validates compilation and architecture invariants only.
+> not constitute network validation of the native application. Version 1.0.1
+> received the focused Windows startup validation documented below; no new
+> proxy, TUN-mode, leak, or packet-capture claim is inferred from that run.
+
+### Version 1.0.1 Windows startup regression
+
+On 2026-07-15, the released 1.0.0 executable reproduced the startup failure on
+the Windows test device: the process displayed a
+`System.Windows.Baml2006.TypeConverterMarkupExtension` error before its main
+window was created. Windows WPF `BitmapDecoder` rejected the PNG-compressed ICO
+with `FileFormatException` and WIC HRESULT `0x88982F60`.
+
+The matching 256 px PNG decoded successfully. The regenerated DIB-frame ICO
+also decoded all nine sizes (16, 20, 24, 32, 40, 48, 64, 128, and 256 px).
+A self-contained 1.0.1 fix build then opened the native WPF window in the
+interactive console session with the official title-bar icon visible. No
+`state/startup-error.log` was created, the owned `myst.exe` child started, port
+44050 was loopback-only, and no listener existed on the removed UI port 44051.
+
+The backend subsequently reported a separate 10-second control request timeout
+on that device. This did not prevent the native window from starting and was
+not treated as evidence of external proxy or TUN-mode compatibility.
 
 **Prototype works for the tested browser-scoped routing paths, with packaging
 and operational gaps.** Tests used Windows Server 2022, Mullvad Browser

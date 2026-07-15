@@ -7,11 +7,11 @@ function Assert-Equal($Actual, $Expected, [string]$Message) {
     if ($Actual -ne $Expected) { throw "$Message (expected '$Expected', got '$Actual')" }
 }
 
-Assert-Equal $properties.Version "1.0.0" "Application version must be 1.0.0"
-Assert-Equal $properties.PackageVersion "1.0.0" "Package version must be 1.0.0"
-Assert-Equal $properties.AssemblyVersion "1.0.0.0" "Assembly version must be 1.0.0.0"
-Assert-Equal $properties.FileVersion "1.0.0.0" "File version must be 1.0.0.0"
-Assert-Equal $properties.InformationalVersion "1.0.0" "Informational version must be 1.0.0"
+Assert-Equal $properties.Version "1.0.1" "Application version must be 1.0.1"
+Assert-Equal $properties.PackageVersion "1.0.1" "Package version must be 1.0.1"
+Assert-Equal $properties.AssemblyVersion "1.0.1.0" "Assembly version must be 1.0.1.0"
+Assert-Equal $properties.FileVersion "1.0.1.0" "File version must be 1.0.1.0"
+Assert-Equal $properties.InformationalVersion "1.0.1" "Informational version must be 1.0.1"
 Assert-Equal $properties.ApplicationIcon "Assets\AppIcon.ico" "Executable icon declaration is missing"
 
 $assets = Join-Path $root "src\PrivacyBrowser.App\Assets"
@@ -19,9 +19,12 @@ $iconPath = Join-Path $assets "AppIcon.ico"
 $masterPath = Join-Path $assets "IconMaster.png"
 $windowXaml = Get-Content (Join-Path $root "src\PrivacyBrowser.App\MainWindow.xaml") -Raw
 $manifest = Get-Content (Join-Path $root "src\PrivacyBrowser.App\app.manifest") -Raw
-if (-not $windowXaml.Contains('Icon="Assets/AppIcon.ico"')) { throw "The WPF window does not use the official icon." }
-if (-not $manifest.Contains('assemblyIdentity version="1.0.0.0"')) { throw "Manifest version is not 1.0.0.0." }
+if (-not $windowXaml.Contains('Icon="Assets/Icons/app-icon-256.png"')) { throw "The WPF window does not use the WPF-compatible official icon." }
+if (-not $manifest.Contains('assemblyIdentity version="1.0.1.0"')) { throw "Manifest version is not 1.0.1.0." }
 if (-not $manifest.Contains('name="PrivacyBrowser"')) { throw "Manifest application identity is inconsistent." }
+
+$resources = @($project.Project.ItemGroup.Resource | ForEach-Object { $_.Include })
+if ('Assets\Icons\app-icon-256.png' -notin $resources) { throw "The WPF-compatible window icon is not embedded as a Resource." }
 
 foreach ($path in @($iconPath, $masterPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required icon asset missing: $path" }
@@ -29,6 +32,39 @@ foreach ($path in @($iconPath, $masterPath)) {
 foreach ($size in @(16, 20, 24, 32, 40, 48, 64, 128, 256, 512)) {
     $png = Join-Path $assets "Icons\app-icon-$size.png"
     if (-not (Test-Path -LiteralPath $png -PathType Leaf)) { throw "PNG icon size missing: $size" }
+}
+
+# WPF uses the Windows Imaging Component decoder at runtime. Validate the
+# exact window resource here; shell/PE icon extraction alone does not prove
+# that a XAML ImageSource TypeConverter can decode it.
+Add-Type -AssemblyName PresentationCore
+$windowIconPath = Join-Path $assets "Icons\app-icon-256.png"
+$stream = [IO.File]::OpenRead($windowIconPath)
+try {
+    $decoder = [System.Windows.Media.Imaging.BitmapDecoder]::Create(
+        $stream,
+        [System.Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat,
+        [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
+    Assert-Equal $decoder.Frames.Count 1 "WPF window icon must contain one decodable PNG frame"
+    Assert-Equal $decoder.Frames[0].PixelWidth 256 "WPF window icon width is incorrect"
+    Assert-Equal $decoder.Frames[0].PixelHeight 256 "WPF window icon height is incorrect"
+} finally {
+    $stream.Dispose()
+}
+
+$stream = [IO.File]::OpenRead($iconPath)
+try {
+    $decoder = [System.Windows.Media.Imaging.BitmapDecoder]::Create(
+        $stream,
+        [System.Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat,
+        [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
+    Assert-Equal $decoder.Frames.Count 9 "Windows/WPF must decode all nine ICO frames"
+    $wicIcoSizes = @($decoder.Frames | ForEach-Object { $_.PixelWidth })
+    foreach ($expected in @(16, 20, 24, 32, 40, 48, 64, 128, 256)) {
+        if ($expected -notin $wicIcoSizes) { throw "WIC-decoded ICO size entry missing: $expected" }
+    }
+} finally {
+    $stream.Dispose()
 }
 
 $bytes = [IO.File]::ReadAllBytes($iconPath)
@@ -47,8 +83,8 @@ foreach ($expected in @(16, 20, 24, 32, 40, 48, 64, 128, 256)) {
 $exe = Join-Path $root "app\PrivacyBrowser.exe"
 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Built executable missing: $exe" }
 $version = (Get-Item -LiteralPath $exe).VersionInfo
-Assert-Equal $version.FileVersion "1.0.0.0" "Executable file version is incorrect"
-if (-not $version.ProductVersion.StartsWith("1.0.0")) { throw "Executable product version is incorrect: $($version.ProductVersion)" }
+Assert-Equal $version.FileVersion "1.0.1.0" "Executable file version is incorrect"
+if (-not $version.ProductVersion.StartsWith("1.0.1")) { throw "Executable product version is incorrect: $($version.ProductVersion)" }
 
 Add-Type -AssemblyName System.Drawing
 $embeddedIcon = [Drawing.Icon]::ExtractAssociatedIcon($exe)
@@ -78,4 +114,4 @@ try {
     $embeddedIcon.Dispose()
 }
 
-Write-Host "PASS: version 1.0.0 metadata and approved executable/window icon are embedded."
+Write-Host "PASS: version 1.0.1 metadata and WPF-compatible/PE application icons are embedded."
