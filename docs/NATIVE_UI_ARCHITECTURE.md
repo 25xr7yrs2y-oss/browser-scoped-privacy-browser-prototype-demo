@@ -47,10 +47,18 @@ The upper-right **Controls** entry opens the native control panel. It supports:
 - backend status and lifecycle;
 - consumer terms acceptance using the daemon's terms contract;
 - identity creation and registration;
-- provider discovery and selection;
+- wallet balance refresh and native payment-order creation through the
+  daemon's `/v2/payment-order-*` contracts;
+- WireGuard provider discovery, pricing details, and selection;
 - connect and disconnect;
 - guarded launch of the isolated Mullvad Browser profile;
-- local activity reporting.
+- local activity reporting with translated backend errors.
+
+Snapshot reads isolate the connection, identity, and terms resources. A
+registration-chain timeout can therefore mark only identity status as
+unavailable while keeping backend status, provider refresh, and retry controls
+usable. Action requests surface progress and their final success or failure in
+the WPF panel instead of relying on raw daemon output.
 
 The UI and controller communicate through ordinary in-process method calls—no
 socket, local web server, WebView, or frontend IPC bridge is needed. The native
@@ -88,4 +96,5 @@ change because WPF does not know which transport the controller uses.
 - Port 44050 remains until Myst gains an equivalent named-pipe or in-process
   control contract.
 - Provider, payment, registration, and discovery behavior remains external to
-  this repository and is not reimplemented by the UI migration.
+  this repository. The native UI consumes the backend contracts but does not
+  reimplement Mysterium's payment or discovery services.

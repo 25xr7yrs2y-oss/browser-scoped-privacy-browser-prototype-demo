@@ -107,11 +107,21 @@ The userspace proxy path is intended to work without elevation, but the live
 provider run used Administrator and the upstream installer requires elevation.
 A genuine standard-user run remains a validation gap.
 
-The application opens its own native window. Use the **Controls** button in the
-upper-right to create/register an identity, load providers, connect, disconnect,
-and launch the browser. The browser launch button is enabled only after the
-backend reports `CONNECTED`; launch also verifies that the expected backend
-process owns the loopback proxy listener on port 4449.
+The application opens its own native window. Its overview shows backend,
+identity, wallet, provider, and browser-readiness state at a glance. Use the
+**Controls** button in the upper-right to:
+
+- accept consumer terms and create/register an identity;
+- view and refresh the identity's MYST balance;
+- create a top-up through payment gateways reported by the Myst TequilAPI;
+- discover, inspect, and select WireGuard providers;
+- connect, disconnect, and launch the isolated browser; and
+- see operation progress, results, prerequisite guidance, and friendly errors.
+
+The browser launch button is enabled only after the backend reports
+`CONNECTED`; launch also verifies that the expected backend process owns the
+loopback proxy listener on port 4449. Payment checkout, provider availability,
+and identity registration still depend on Mysterium's external services.
 
 Use `-KeepBackendRunning` only for debugging; by default the native application
 owns and cleans up the `myst.exe` process it started. Use `-SkipBackendLaunch`

@@ -57,6 +57,17 @@ Audited branch: `25xr7yrs2y-oss/myst-lmprove@227d63b`, branch
   the daemon's existing `POST /stop` endpoint on port 44050, waits for graceful
   exit, and terminates only the process tree it started if graceful shutdown
   times out. The removed `/api/node/stop` path belonged to the port 44051 web UI.
+- Consumer account contracts: identity details expose `balance_tokens`; a
+  forced refresh is `PUT /identities/{id}/balance/refresh`; available payment
+  gateways and order creation are provided by `/v2/payment-order-gateways` and
+  `/v2/identities/{id}/{gateway}/payment-order`.
+- Provider contracts: WireGuard proposals are loaded from `/proposals` with
+  `service_type=wireguard` and `access_policy=all`. The native adapter validates
+  and deduplicates results before presenting them.
+- Connection options: the pinned Go contract serializes its
+  `DisableKillSwitch` field as `kill_switch`; the native request now uses that
+  exact wire name and includes monitoring-failed proposals consistently with
+  the upstream client.
 
 ## Native UI migration
 
@@ -130,8 +141,8 @@ prototype adds none of them.
   policy/build combination.
 - Backend claims about SOCKS support were not confirmed by implementation;
   this integration uses HTTP/CONNECT only.
-- Provider availability, identity registration, payment state, and backend
-  control-plane behavior are external dependencies.
+- Provider availability, identity registration, payment state, checkout
+  completion, and backend control-plane behavior are external dependencies.
 - Creating a fresh identity during the first run ended as `Unregistered` with
   backend log evidence `no contract code at given address`. A later run used a
   separately supplied registered identity and completed provider-path, DNS,

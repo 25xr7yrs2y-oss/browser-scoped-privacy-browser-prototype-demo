@@ -3,42 +3,119 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnMainWindowClose">
     <Application.Resources>
-        <SolidColorBrush x:Key="WindowBackground" Color="#F4F6F8" />
+        <SolidColorBrush x:Key="WindowBackground" Color="#F3F6F5" />
         <SolidColorBrush x:Key="CardBackground" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="Primary" Color="#176B5B" />
-        <SolidColorBrush x:Key="PrimaryHover" Color="#125447" />
-        <SolidColorBrush x:Key="TextPrimary" Color="#18221F" />
+        <SolidColorBrush x:Key="Primary" Color="#126B59" />
+        <SolidColorBrush x:Key="PrimaryHover" Color="#0E5849" />
+        <SolidColorBrush x:Key="PrimarySoft" Color="#E7F3F0" />
+        <SolidColorBrush x:Key="TextPrimary" Color="#17211E" />
         <SolidColorBrush x:Key="TextSecondary" Color="#5B6864" />
+        <SolidColorBrush x:Key="Border" Color="#DCE4E1" />
+        <SolidColorBrush x:Key="Success" Color="#13795B" />
+        <SolidColorBrush x:Key="SuccessSoft" Color="#E8F6F1" />
+        <SolidColorBrush x:Key="Warning" Color="#9A5A00" />
+        <SolidColorBrush x:Key="WarningSoft" Color="#FFF4DE" />
+        <SolidColorBrush x:Key="Danger" Color="#B42318" />
+        <SolidColorBrush x:Key="DangerSoft" Color="#FDECEA" />
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+        </Style>
+
+        <Style x:Key="SecondaryText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="17" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style x:Key="Eyebrow" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+        </Style>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CardBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="20" />
+        </Style>
 
         <Style TargetType="Button">
             <Setter Property="Padding" Value="16,9" />
             <Setter Property="Margin" Value="0,4,8,4" />
+            <Setter Property="MinHeight" Value="38" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="{StaticResource Primary}" />
             <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Border" Background="{TemplateBinding Background}" CornerRadius="7"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="{StaticResource PrimaryHover}" />
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.88" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#438F80" />
+                                <Setter TargetName="ButtonBorder" Property="BorderThickness" Value="2" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Border" Property="Opacity" Value="0.45" />
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.42" />
+                                <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style TargetType="TextBlock">
+
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource PrimarySoft}" />
+            <Setter Property="Foreground" Value="{StaticResource Primary}" />
+        </Style>
+
+        <Style x:Key="NeutralButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#E9EEEC" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        </Style>
+
+        <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource DangerSoft}" />
+            <Setter Property="Foreground" Value="{StaticResource Danger}" />
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="9,5" />
+            <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+            <Setter Property="Background" Value="White" />
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="9,7" />
+            <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+            <Setter Property="Background" Value="White" />
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
         </Style>
     </Application.Resources>
 </Application>

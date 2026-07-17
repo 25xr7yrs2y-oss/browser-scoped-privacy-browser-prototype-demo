@@ -24,6 +24,9 @@ jobs:
       - name: Validate native architecture invariants
         shell: powershell
         run: .\tests\Test-NativeArchitecture.ps1
+      - name: Validate backend controls and wallet workflow
+        shell: powershell
+        run: .\tests\Test-BackendControls.ps1
       - name: Validate version and WPF/embedded icons
         shell: powershell
         run: .\tests\Test-ReleaseMetadata.ps1

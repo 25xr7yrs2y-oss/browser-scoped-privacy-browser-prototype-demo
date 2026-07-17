@@ -1,0 +1,98 @@
+<Window x:Class="PrivacyBrowser.App.TopUpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Top up Mysterium wallet" Height="650" Width="560" MinHeight="580" MinWidth="520"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize" Background="{StaticResource WindowBackground}"
+        ShowInTaskbar="False">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="24,20">
+            <StackPanel>
+                <TextBlock Text="Top up wallet" FontSize="23" FontWeight="SemiBold" />
+                <TextBlock Style="{StaticResource SecondaryText}" Margin="0,5,0,0"
+                           Text="Create a payment order through a gateway offered by the Myst backend." />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24">
+            <StackPanel>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="Payment details" Style="{StaticResource SectionTitle}" />
+
+                        <TextBlock Text="Gateway" Margin="0,18,0,6" FontWeight="SemiBold" />
+                        <ComboBox x:Name="GatewayComboBox" DisplayMemberPath="DisplayName"
+                                  SelectionChanged="GatewayComboBox_SelectionChanged" />
+                        <TextBlock x:Name="GatewayHelpText" Style="{StaticResource SecondaryText}" Margin="0,5,0,0" />
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="14" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Amount (MYST)" Margin="0,0,0,6" FontWeight="SemiBold" />
+                                <TextBox x:Name="AmountTextBox" Text="20" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Pay with" Margin="0,0,0,6" FontWeight="SemiBold" />
+                                <ComboBox x:Name="CurrencyComboBox" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="14" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Country code" Margin="0,0,0,6" FontWeight="SemiBold" />
+                                <TextBox x:Name="CountryTextBox" MaxLength="2" CharacterCasing="Upper" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="State code (optional)" Margin="0,0,0,6" FontWeight="SemiBold" />
+                                <TextBox x:Name="StateTextBox" MaxLength="2" CharacterCasing="Upper" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="ResultBorder" Style="{StaticResource Card}" Margin="0,14,0,0" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock x:Name="ResultTitleText" Text="Payment order created" Style="{StaticResource SectionTitle}" />
+                        <TextBlock x:Name="ResultDetailText" Style="{StaticResource SecondaryText}" Margin="0,7,0,8" />
+                        <WrapPanel>
+                            <Button x:Name="OpenPaymentButton" Content="Open payment" Click="OpenPaymentButton_Click"
+                                    Visibility="Collapsed" />
+                            <Button x:Name="CopyPaymentButton" Content="Copy payment details" Click="CopyPaymentButton_Click"
+                                    Style="{StaticResource SecondaryButton}" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="ErrorBorder" Background="{StaticResource DangerSoft}" CornerRadius="8" Padding="12"
+                        Margin="0,14,0,0" Visibility="Collapsed">
+                    <TextBlock x:Name="ErrorText" Foreground="{StaticResource Danger}" TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="24,14">
+            <Grid>
+                <ProgressBar x:Name="LoadingProgress" IsIndeterminate="True" Height="3" VerticalAlignment="Top"
+                             Visibility="Collapsed" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Close" Click="CloseButton_Click" Style="{StaticResource NeutralButton}" />
+                    <Button x:Name="CreateOrderButton" Content="Create payment order" Click="CreateOrderButton_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
