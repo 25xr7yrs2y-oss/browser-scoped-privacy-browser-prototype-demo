@@ -7,11 +7,11 @@ function Assert-Equal($Actual, $Expected, [string]$Message) {
     if ($Actual -ne $Expected) { throw "$Message (expected '$Expected', got '$Actual')" }
 }
 
-Assert-Equal $properties.Version "1.0.1" "Application version must be 1.0.1"
-Assert-Equal $properties.PackageVersion "1.0.1" "Package version must be 1.0.1"
-Assert-Equal $properties.AssemblyVersion "1.0.1.0" "Assembly version must be 1.0.1.0"
-Assert-Equal $properties.FileVersion "1.0.1.0" "File version must be 1.0.1.0"
-Assert-Equal $properties.InformationalVersion "1.0.1" "Informational version must be 1.0.1"
+Assert-Equal $properties.Version "1.0.2" "Application version must be 1.0.2"
+Assert-Equal $properties.PackageVersion "1.0.2" "Package version must be 1.0.2"
+Assert-Equal $properties.AssemblyVersion "1.0.2.0" "Assembly version must be 1.0.2.0"
+Assert-Equal $properties.FileVersion "1.0.2.0" "File version must be 1.0.2.0"
+Assert-Equal $properties.InformationalVersion "1.0.2" "Informational version must be 1.0.2"
 Assert-Equal $properties.ApplicationIcon "Assets\AppIcon.ico" "Executable icon declaration is missing"
 
 $assets = Join-Path $root "src\PrivacyBrowser.App\Assets"
@@ -20,7 +20,7 @@ $masterPath = Join-Path $assets "IconMaster.png"
 $windowXaml = Get-Content (Join-Path $root "src\PrivacyBrowser.App\MainWindow.xaml") -Raw
 $manifest = Get-Content (Join-Path $root "src\PrivacyBrowser.App\app.manifest") -Raw
 if (-not $windowXaml.Contains('Icon="Assets/Icons/app-icon-256.png"')) { throw "The WPF window does not use the WPF-compatible official icon." }
-if (-not $manifest.Contains('assemblyIdentity version="1.0.1.0"')) { throw "Manifest version is not 1.0.1.0." }
+if (-not $manifest.Contains('assemblyIdentity version="1.0.2.0"')) { throw "Manifest version is not 1.0.2.0." }
 if (-not $manifest.Contains('name="PrivacyBrowser"')) { throw "Manifest application identity is inconsistent." }
 
 $resources = @($project.Project.ItemGroup.Resource | ForEach-Object { $_.Include })
@@ -83,8 +83,8 @@ foreach ($expected in @(16, 20, 24, 32, 40, 48, 64, 128, 256)) {
 $exe = Join-Path $root "app\PrivacyBrowser.exe"
 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Built executable missing: $exe" }
 $version = (Get-Item -LiteralPath $exe).VersionInfo
-Assert-Equal $version.FileVersion "1.0.1.0" "Executable file version is incorrect"
-if (-not $version.ProductVersion.StartsWith("1.0.1")) { throw "Executable product version is incorrect: $($version.ProductVersion)" }
+Assert-Equal $version.FileVersion "1.0.2.0" "Executable file version is incorrect"
+if (-not $version.ProductVersion.StartsWith("1.0.2")) { throw "Executable product version is incorrect: $($version.ProductVersion)" }
 
 Add-Type -AssemblyName System.Drawing
 $embeddedIcon = [Drawing.Icon]::ExtractAssociatedIcon($exe)
@@ -114,4 +114,4 @@ try {
     $embeddedIcon.Dispose()
 }
 
-Write-Host "PASS: version 1.0.1 metadata and WPF-compatible/PE application icons are embedded."
+Write-Host "PASS: version 1.0.2 metadata and WPF-compatible/PE application icons are embedded."

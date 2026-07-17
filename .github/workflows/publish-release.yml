@@ -10,7 +10,7 @@ on:
       tag:
         description: Existing release tag
         required: true
-        default: v1.0.1
+        default: v1.0.2
         type: string
 
 permissions:
@@ -28,18 +28,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.run_id }}
-        run: gh run download "$RUN_ID" --name PrivacyBrowser-1.0.1-release-assets --dir release
+        run: gh run download "$RUN_ID" --name PrivacyBrowser-1.0.2-release-assets --dir release
       - name: Confirm expected release files
         run: |
-          test -s release/PrivacyBrowser-1.0.1-windows-x64-portable.zip
-          test -s release/PrivacyBrowser-1.0.1-myst-lmprove-source-227d63b.tar.gz
-          test -s release/PrivacyBrowser-1.0.1-SHA256SUMS.txt
+          test -s release/PrivacyBrowser-1.0.2-windows-x64-portable.zip
+          test -s release/PrivacyBrowser-1.0.2-myst-lmprove-source-227d63b.tar.gz
+          test -s release/PrivacyBrowser-1.0.2-SHA256SUMS.txt
           cd release
-          sha256sum --check PrivacyBrowser-1.0.1-SHA256SUMS.txt
+          sha256sum --check PrivacyBrowser-1.0.2-SHA256SUMS.txt
       - name: Upload assets and publish release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
         run: |
           gh release upload "$TAG" release/* --clobber
-          gh release edit "$TAG" --title "Version 1.0.1" --notes-file docs/RELEASE_NOTES_1.0.1.md --draft=false --prerelease=false
+          gh release edit "$TAG" --title "Version 1.0.2 testing release" --notes-file docs/RELEASE_NOTES_1.0.2.md --draft=false --prerelease=true
