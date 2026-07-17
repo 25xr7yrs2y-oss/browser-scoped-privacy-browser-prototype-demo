@@ -33,9 +33,28 @@ jobs:
       - name: Validate evidence integrity
         shell: powershell
         run: .\tests\Test-Evidence.ps1
+      - name: Publish self-contained QA application
+        shell: powershell
+        run: |
+          dotnet publish .\src\PrivacyBrowser.App\PrivacyBrowser.App.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output qa-app `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
       - name: Upload native application
         uses: actions/upload-artifact@v4
         with:
           name: PrivacyBrowser-1.0.1-windows-x64-app
           path: app/
+          if-no-files-found: error
+      - name: Upload self-contained QA application
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrivacyBrowser-1.0.1-windows-x64-self-contained
+          path: qa-app/
           if-no-files-found: error
