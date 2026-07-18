@@ -46,12 +46,13 @@ The upper-right **Controls** entry opens the native control panel. It supports:
 
 - backend status and lifecycle;
 - consumer terms acceptance using the daemon's terms contract;
-- identity creation and registration;
+- passphrase-protected identity creation, encrypted-key import, explicit
+  multi-identity selection, unlock, and registration;
 - wallet balance refresh and native payment-order creation through the
   daemon's `/v2/payment-order-*` contracts;
 - WireGuard provider discovery, pricing details, and selection;
 - connect and disconnect;
-- guarded launch of the isolated Mullvad Browser profile;
+- guarded launch and process tracking of the isolated Mullvad Browser profile;
 - local activity reporting with translated backend errors.
 
 Snapshot reads isolate the connection, identity, and terms resources. A
@@ -84,15 +85,20 @@ change because WPF does not know which transport the controller uses.
 - The native app does not change system proxy, DNS, firewall, or route state.
 - Browser policy remains locked to `127.0.0.1:4449` with no direct fallback.
 - The app refuses to overwrite an unrelated browser policy file.
-- Before browser launch, the app verifies that all port 4449 listeners are
-  loopback-only and, for an owned backend, owned by its `myst.exe` process.
+- Before browser launch, one readiness evaluator verifies connection state,
+  browser and policy integrity, loopback-only port 4449 binding, and ownership
+  by the app-started `myst.exe`. The UI uses the same result.
+- Adopted backends remain available for control-plane diagnostics but cannot
+  launch the browser because their proxy ownership is unverifiable.
+- A portable bundle manifest detects missing or mixed controller, browser,
+  backend, and policy components before startup.
 - Backend shutdown first uses the graceful daemon endpoint and only then kills
   the owned process tree if required.
 
 ## Deliberate limitations
 
-- The WPF app currently uses the first identity in the existing Myst data
-  directory; identity import/export and multi-identity selection can be added.
+- Identity export/removal and OS-backed credential storage are not implemented.
+  Passphrases remain operation-scoped and are not persisted.
 - Port 44050 remains until Myst gains an equivalent named-pipe or in-process
   control contract.
 - Provider, payment, registration, and discovery behavior remains external to

@@ -7,15 +7,21 @@ namespace PrivacyBrowser.App;
 public sealed record BackendSnapshot(
     bool NodeUp,
     ConnectionInfo Connection,
-    IdentityDetails? Identity,
+    IReadOnlyList<IdentityDetails> Identities,
+    string? SelectedIdentityId,
     TermsStatus? Terms,
     IReadOnlyList<BackendIssue> Issues,
     DateTimeOffset ObservedAt)
 {
     public bool IsConnected => Connection.Status.Equals("CONNECTED", StringComparison.OrdinalIgnoreCase);
 
+    public IdentityDetails? Identity => string.IsNullOrWhiteSpace(SelectedIdentityId)
+        ? null
+        : Identities.FirstOrDefault(identity =>
+            identity.Id.Equals(SelectedIdentityId, StringComparison.OrdinalIgnoreCase));
+
     public static BackendSnapshot Offline(string reason = "The Myst backend is not responding.") =>
-        new(false, new ConnectionInfo { Status = "BACKEND_OFFLINE" }, null, null,
+        new(false, new ConnectionInfo { Status = "BACKEND_OFFLINE" }, [], null, null,
             [new BackendIssue("healthcheck", reason)], DateTimeOffset.Now);
 }
 
@@ -64,6 +70,32 @@ public sealed class IdentityReference
     public string Id { get; set; } = "";
 }
 
+public enum BrowserReadinessState
+{
+    Incomplete,
+    Checking,
+    Ready,
+    Error,
+    BrowserRunning,
+}
+
+public sealed record BrowserReadiness(
+    BrowserReadinessState State,
+    string Summary,
+    IReadOnlyList<string> Issues)
+{
+    public bool CanLaunch => State == BrowserReadinessState.Ready;
+}
+
+public enum BackendLifecycleState
+{
+    Stopped,
+    Starting,
+    Running,
+    Crashed,
+    Failed,
+}
+
 public sealed class IdentityDetails
 {
     [JsonPropertyName("id")]
@@ -84,6 +116,16 @@ public sealed class IdentityDetails
     [JsonIgnore]
     public bool RegistrationInProgress => RegistrationStatus.Equals("InProgress", StringComparison.OrdinalIgnoreCase) ||
         RegistrationStatus.Equals("In progress", StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public string DisplayName
+    {
+        get
+        {
+            var shortId = Id.Length > 18 ? Id[..10] + "…" + Id[^6..] : Id;
+            return $"{shortId}  ·  {(string.IsNullOrWhiteSpace(RegistrationStatus) ? "Unknown" : RegistrationStatus)}";
+        }
+    }
 }
 
 public sealed class BalanceStatus

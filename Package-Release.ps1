@@ -119,6 +119,27 @@ try {
     New-Item -ItemType Directory -Path $mystDestination -Force | Out-Null
     Copy-Item -LiteralPath $mystExe.FullName -Destination (Join-Path $mystDestination "myst.exe")
 
+    # The archive checksum authenticates the download. This in-bundle manifest then
+    # detects missing, stale, or mixed critical components after users extract it.
+    $criticalComponents = @(
+        (Join-Path $packageRoot "PrivacyBrowser.exe"),
+        (Join-Path $packageRoot "config\policies.json"),
+        (Join-Path $browserDestination "mullvadbrowser.exe"),
+        (Join-Path $mystDestination "myst.exe")
+    )
+    $manifestComponents = foreach ($component in $criticalComponents) {
+        $item = Get-Item -LiteralPath $component
+        [PSCustomObject]@{
+            path = [IO.Path]::GetRelativePath($packageRoot, $item.FullName).Replace('\', '/')
+            sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            length = $item.Length
+        }
+    }
+    [PSCustomObject]@{
+        releaseVersion = $version
+        components = @($manifestComponents)
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $packageRoot "bundle-manifest.json") -Encoding UTF8
+
     $sourcePath = Join-Path $OutputDirectory $sourceName
     $sourceHeaders = @{
         Authorization = "Bearer $MystReleaseToken"

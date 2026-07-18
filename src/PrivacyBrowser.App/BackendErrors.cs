@@ -83,6 +83,16 @@ public static class BackendErrorTranslator
         {
             return "Identity registration is already in progress. Refresh its status in a moment.";
         }
+        if (string.Equals(code, "err_id_unlock", StringComparison.OrdinalIgnoreCase) ||
+            backendMessage.Contains("unlock failed", StringComparison.OrdinalIgnoreCase) ||
+            backendMessage.Contains("could not decrypt", StringComparison.OrdinalIgnoreCase))
+        {
+            return "The identity could not be unlocked. Check the passphrase and try again.";
+        }
+        if (string.Equals(code, "err_id_import", StringComparison.OrdinalIgnoreCase))
+        {
+            return "The encrypted identity could not be imported. Check the file and its passphrase, then try again.";
+        }
         if (string.Equals(code, "err_connection_already_exists", StringComparison.OrdinalIgnoreCase))
         {
             return "A provider connection already exists. Disconnect it before starting another.";
@@ -106,10 +116,9 @@ public static class BackendErrorTranslator
             return "Mysterium could not verify identity registration. Check your internet connection and refresh status.";
         }
 
-        var clean = backendMessage.Trim();
-        return string.IsNullOrWhiteSpace(clean) || clean.StartsWith('{')
+        return string.IsNullOrWhiteSpace(code)
             ? "The backend rejected the request. Refresh status and try again."
-            : Limit(clean, 300);
+            : $"The backend rejected the request (support code: {Limit(code, 80)}). Refresh status and try again.";
     }
 
     private static string? FindJsonString(string json, string propertyName)

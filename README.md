@@ -7,7 +7,9 @@ firewall, or route table.
 
 ## Status
 
-The native integration and portable release packaging are implemented. Packet capture confirms browser payload
+The native integration and portable release packaging are implemented. Post-1.0.2 hardening adds
+passphrase-protected identity create/import/unlock, explicit multi-identity selection, composite launch readiness,
+backend restart, browser process tracking, and extracted-bundle integrity checks. Packet capture confirms browser payload
 routing through the loopback backend and a Mysterium provider, no direct
 browser TCP/DNS/UDP path, fail-closed behavior before launch and after backend
 termination, and unaffected external `curl`/PowerShell traffic. Code signing,
@@ -38,6 +40,11 @@ WPF event handlers call an in-process controller; only the existing Myst daemon
 control contract on `44050` remains. Port `4449` remains intentionally because
 it is the browser's data-plane proxy, not a UI transport. See
 `docs/NATIVE_UI_ARCHITECTURE.md` for the migration analysis and trust boundary.
+
+Portable packages include `bundle-manifest.json`. Before backend startup, the
+application verifies the release version, size, and SHA-256 of the controller,
+browser, locked policy, and Myst backend. This detects incomplete or mixed
+extractions; the published archive checksum remains the authenticity boundary.
 
 The browser never receives a direct-fallback proxy configuration. If the
 backend disappears, Firefox requests continue targeting the dead loopback
@@ -112,21 +119,26 @@ identity, wallet, provider, and browser-readiness state at a glance. Use the
 **Controls** button in the upper-right to:
 
 - accept consumer terms and create/register an identity;
+- create a passphrase-protected identity or import an existing encrypted key;
+- explicitly select among identities and retry unlock credentials securely;
 - view and refresh the identity's MYST balance;
 - create a top-up through payment gateways reported by the Myst TequilAPI;
-- discover, inspect, and select WireGuard providers;
-- connect, disconnect, and launch the isolated browser; and
+- discover, search, inspect, and select WireGuard providers;
+- connect, disconnect, and launch the isolated browser;
+- restart an owned backend after failure; and
 - see operation progress, results, prerequisite guidance, and friendly errors.
 
-The browser launch button is enabled only after the backend reports
-`CONNECTED`; launch also verifies that the expected backend process owns the
-loopback proxy listener on port 4449. Payment checkout, provider availability,
+The browser launch button is enabled only after one composite readiness check
+verifies the `CONNECTED` state, expected backend ownership of the loopback
+proxy listener, browser executable, and locked policy. The same check runs
+again at launch. Payment checkout, provider availability,
 and identity registration still depend on Mysterium's external services.
 
 Use `-KeepBackendRunning` only for debugging; by default the native application
 owns and cleans up the `myst.exe` process it started. Use `-SkipBackendLaunch`
-only when deliberately adopting an already-running development backend on
-`127.0.0.1:44050`.
+only for control-plane diagnostics against an already-running development
+backend on `127.0.0.1:44050`. Browser launch is disabled in this mode because
+proxy process ownership cannot be proven.
 
 ## Install the policy
 
@@ -140,6 +152,7 @@ an unrelated policy file. The policy affects only this browser tree.
 .\tests\Test-Configuration.ps1
 .\tests\Test-Launcher.ps1
 .\tests\Test-NativeArchitecture.ps1
+.\tests\Test-ProductHardening.ps1
 .\tests\Test-ReleaseMetadata.ps1
 .\tests\Test-Evidence.ps1
 .\validation\Invoke-Validation.ps1 -ModifiedBrowserExe .\vendor\mullvad-browser\mullvadbrowser.exe
@@ -158,6 +171,9 @@ Read `docs/VALIDATION_PLAN.md` before interpreting the result.
 - The Mysterium provider must be selected and connected before browsing.
 - The launcher rejects non-loopback proxy settings and unexpected owners of
   port 4449.
+- Password controls are cleared immediately after use; passphrases are never
+  persisted or written to activity/startup logs.
+- Only a public identity address is persisted as the user's explicit selection.
 - The native app binds no UI listener and never starts the legacy port 44051
   web server.
 - The remaining port 44050 is the Myst daemon's existing loopback-only control

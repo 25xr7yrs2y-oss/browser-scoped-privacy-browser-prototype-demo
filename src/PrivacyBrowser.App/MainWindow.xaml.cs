@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Win32;
 
 namespace PrivacyBrowser.App;
 
@@ -10,16 +11,26 @@ public partial class MainWindow : Window
 {
     private readonly BackendController _backend;
     private readonly BrowserLauncher _browser;
+    private readonly AppOptions _options;
+    private readonly UserStateStore _stateStore;
     private readonly DispatcherTimer _timer;
     private BackendSnapshot _snapshot = BackendSnapshot.Offline("The native controller is starting.");
+    private BrowserReadiness _browserReadiness = new(BrowserReadinessState.Checking, "Checking browser readiness…", []);
+    private IReadOnlyList<ProviderProposal> _providers = [];
+    private string? _selectedIdentityId;
     private bool _busy;
     private bool _refreshing;
     private bool _closing;
+    private bool _renderingIdentities;
+    private bool _bundleValidated;
     private string _lastIssueSignature = "";
 
     public MainWindow(AppOptions options)
     {
         InitializeComponent();
+        _options = options;
+        _stateStore = new UserStateStore(options.BundleRoot);
+        _selectedIdentityId = _stateStore.LoadSelectedIdentityId();
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.2";
         Title = $"Privacy Browser {version}";
         _backend = new BackendController(options);
@@ -28,6 +39,17 @@ public partial class MainWindow : Window
         {
             var friendly = BackendErrorTranslator.ToActivityMessage(message);
             if (friendly is not null) AppendActivity(friendly);
+        });
+        _backend.LifecycleChanged += state => Dispatcher.BeginInvoke(() =>
+        {
+            BackendLifecycleText.Text = FormatLifecycleState(state);
+            UpdateControls();
+        });
+        _browser.BrowserExited += processId => Dispatcher.BeginInvoke(() =>
+        {
+            AppendActivity($"Privacy browser process {processId} exited.");
+            RenderBrowserReadiness();
+            UpdateControls();
         });
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         _timer.Tick += async (_, _) => await RefreshSnapshotAsync(showErrors: false);
@@ -39,6 +61,8 @@ public partial class MainWindow : Window
     {
         await RunOperationAsync("Starting the private backend…", "Backend is ready.", async () =>
         {
+            await BundleValidator.ValidateAsync(_options);
+            _bundleValidated = true;
             await _backend.StartAsync();
             await RefreshSnapshotAsync(showErrors: true);
         });
@@ -53,6 +77,13 @@ public partial class MainWindow : Window
     private async void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (_closing) return;
+        if (_browser.IsBrowserRunning && MessageBox.Show(
+                "The isolated browser is still running. Closing the controller will stop its provider connection and the browser will fail closed. Close anyway?",
+                "Privacy Browser", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            e.Cancel = true;
+            return;
+        }
         e.Cancel = true;
         _closing = true;
         _timer.Stop();
@@ -76,12 +107,72 @@ public partial class MainWindow : Window
 
     private async void CreateIdentityButton_Click(object sender, RoutedEventArgs e)
     {
+        string? passphrase = PromptForPassphrase(
+            "Protect a new identity",
+            "Create a passphrase for this identity. It is required for registration and provider connections and is not stored by Privacy Browser.",
+            "Create identity", requireConfirmation: true, minimumLength: 12);
+        if (passphrase is null) return;
         await RunOperationAsync("Creating a local identity…", "Identity created.", async () =>
         {
-            await _backend.CreateIdentityAsync();
+            var identity = await _backend.CreateIdentityAsync(passphrase);
+            SelectIdentity(identity.Id);
             AppendActivity("A local Mysterium identity was created.");
             await RefreshSnapshotAsync(true);
         });
+        passphrase = null;
+    }
+
+    private async void ImportIdentityButton_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new OpenFileDialog
+        {
+            Title = "Import encrypted Mysterium identity",
+            Filter = "Mysterium identity (*.json)|*.json|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+        if (picker.ShowDialog(this) != true) return;
+        var info = new FileInfo(picker.FileName);
+        if (info.Length <= 0 || info.Length > 1024 * 1024)
+        {
+            ShowOperation("Choose a non-empty identity file smaller than 1 MB.", OperationKind.Error);
+            return;
+        }
+
+        string? passphrase = PromptForPassphrase(
+            "Unlock imported identity",
+            "Enter the passphrase that protects this encrypted key file. The imported key remains protected with the same passphrase.",
+            "Import identity", requireConfirmation: true, minimumLength: 1);
+        if (passphrase is null) return;
+        await RunOperationAsync("Importing the encrypted identity…", "Identity imported and selected.", async () =>
+        {
+            var encryptedKey = await File.ReadAllBytesAsync(picker.FileName);
+            try
+            {
+                var identity = await _backend.ImportIdentityAsync(encryptedKey, passphrase);
+                SelectIdentity(identity.Id);
+                AppendActivity($"Imported and selected identity {ShortId(identity.Id)}.");
+                await RefreshSnapshotAsync(true);
+            }
+            finally
+            {
+                Array.Clear(encryptedKey);
+            }
+        });
+        passphrase = null;
+    }
+
+    private async void UnlockIdentityButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_snapshot.Identity is null) return;
+        string? passphrase = PromptForExistingPassphrase(_snapshot.Identity.Id, "Unlock identity");
+        if (passphrase is null) return;
+        await RunOperationAsync("Unlocking the selected identity…", "Identity unlocked for this backend session.", async () =>
+        {
+            await _backend.UnlockIdentityAsync(_snapshot.Identity.Id, passphrase);
+            AppendActivity($"Unlocked identity {ShortId(_snapshot.Identity.Id)} for this backend session.");
+        });
+        passphrase = null;
     }
 
     private async void AcceptTermsCheckBox_Click(object sender, RoutedEventArgs e)
@@ -104,18 +195,27 @@ public partial class MainWindow : Window
     private async void RegisterIdentityButton_Click(object sender, RoutedEventArgs e)
     {
         if (_snapshot.Identity is null) return;
+        string? passphrase = PromptForExistingPassphrase(_snapshot.Identity.Id, "Register identity");
+        if (passphrase is null) return;
         await RunOperationAsync("Requesting identity registration…", "Registration requested. Refresh status as it progresses.", async () =>
         {
-            await _backend.RegisterIdentityAsync(_snapshot.Identity.Id);
+            await _backend.RegisterIdentityAsync(_snapshot.Identity.Id, passphrase);
             AppendActivity("Identity registration started. A wallet top-up may be required to finish registration.");
             await RefreshSnapshotAsync(true);
         });
+        passphrase = null;
     }
 
     private async void RefreshIdentityButton_Click(object sender, RoutedEventArgs e)
     {
-        await RunOperationAsync("Refreshing identity status…", "Identity status refreshed.",
-            () => RefreshSnapshotAsync(showErrors: true));
+        await RunOperationAsync("Refreshing identity status…", "Identity status refreshed.", async () =>
+        {
+            await RefreshSnapshotAsync(showErrors: true);
+            var issue = _snapshot.Issues.FirstOrDefault(item =>
+                item.Area.Equals("identity", StringComparison.OrdinalIgnoreCase) ||
+                item.Area.Equals("identity status", StringComparison.OrdinalIgnoreCase));
+            if (issue is not null) throw new InvalidOperationException(issue.Message);
+        });
     }
 
     private async void RefreshBalanceButton_Click(object sender, RoutedEventArgs e)
@@ -149,12 +249,15 @@ public partial class MainWindow : Window
     private async void ConnectButton_Click(object sender, RoutedEventArgs e)
     {
         if (_snapshot.Identity is null || ProviderComboBox.SelectedItem is not ProviderProposal provider) return;
+        string? passphrase = PromptForExistingPassphrase(_snapshot.Identity.Id, "Connect to provider");
+        if (passphrase is null) return;
         await RunOperationAsync($"Connecting to {provider.DisplayName}…", "Provider connected. The browser is ready.", async () =>
         {
             AppendActivity($"Connecting to {provider.DisplayName}.");
-            await _backend.ConnectAsync(_snapshot.Identity.Id, provider);
+            await _backend.ConnectAsync(_snapshot.Identity.Id, passphrase, provider);
             await RefreshSnapshotAsync(true);
         });
+        passphrase = null;
     }
 
     private async void DisconnectButton_Click(object sender, RoutedEventArgs e)
@@ -171,9 +274,11 @@ public partial class MainWindow : Window
     {
         try
         {
-            Process process = _browser.Launch();
+            Process process = _browser.Launch(_snapshot);
             AppendActivity($"Privacy browser started as process {process.Id}.");
             ShowOperation("Privacy browser launched.", OperationKind.Success);
+            RenderBrowserReadiness();
+            UpdateControls();
         }
         catch (Exception ex)
         {
@@ -187,18 +292,108 @@ public partial class MainWindow : Window
         UpdateControls();
     }
 
+    private void RenderIdentitySelector()
+    {
+        _renderingIdentities = true;
+        try
+        {
+            IdentityComboBox.ItemsSource = _snapshot.Identities;
+            IdentityComboBox.SelectedItem = _snapshot.Identity;
+        }
+        finally
+        {
+            _renderingIdentities = false;
+        }
+    }
+
+    private void RenderBrowserReadiness()
+    {
+        _browserReadiness = _browser.EvaluateReadiness(_snapshot);
+        BrowserReadinessText.Text = _browserReadiness.Summary;
+        switch (_browserReadiness.State)
+        {
+            case BrowserReadinessState.Ready:
+                BrowserReadinessIcon.Background = Brush("SuccessSoft");
+                BrowserReadinessGlyph.Foreground = Brush("Success");
+                BrowserReadinessGlyph.Text = "✓";
+                break;
+            case BrowserReadinessState.Error:
+                BrowserReadinessIcon.Background = Brush("DangerSoft");
+                BrowserReadinessGlyph.Foreground = Brush("Danger");
+                BrowserReadinessGlyph.Text = "!";
+                break;
+            case BrowserReadinessState.BrowserRunning:
+                BrowserReadinessIcon.Background = Brush("PrimarySoft");
+                BrowserReadinessGlyph.Foreground = Brush("Primary");
+                BrowserReadinessGlyph.Text = "●";
+                break;
+            default:
+                BrowserReadinessIcon.Background = new SolidColorBrush(Color.FromRgb(0xED, 0xF1, 0xF0));
+                BrowserReadinessGlyph.Foreground = new SolidColorBrush(Color.FromRgb(0x68, 0x73, 0x6F));
+                BrowserReadinessGlyph.Text = "…";
+                break;
+        }
+    }
+
+    private void ApplyProviderFilter(string? selectedId = null)
+    {
+        if (ProviderSearchTextBox is null || ProviderComboBox is null) return;
+        selectedId ??= (ProviderComboBox.SelectedItem as ProviderProposal)?.ProviderId;
+        var query = ProviderSearchTextBox.Text.Trim();
+        var filtered = string.IsNullOrWhiteSpace(query)
+            ? _providers
+            : _providers.Where(provider => new[]
+                {
+                    provider.ProviderId,
+                    provider.Location.Country,
+                    provider.Location.City,
+                    provider.Location.Isp,
+                }.Any(value => value.Contains(query, StringComparison.OrdinalIgnoreCase))).ToArray();
+        ProviderComboBox.ItemsSource = filtered;
+        ProviderComboBox.SelectedItem = filtered.FirstOrDefault(provider =>
+            provider.ProviderId.Equals(selectedId, StringComparison.OrdinalIgnoreCase)) ?? filtered.FirstOrDefault();
+        ProviderCountText.Text = string.IsNullOrWhiteSpace(query)
+            ? (_providers.Count == 1 ? "1 provider" : $"{_providers.Count} providers")
+            : $"{filtered.Count} of {_providers.Count}";
+    }
+
+    private void IdentityComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_renderingIdentities || IdentityComboBox.SelectedItem is not IdentityDetails identity) return;
+        SelectIdentity(identity.Id);
+        _snapshot = _snapshot with { SelectedIdentityId = identity.Id };
+        AppendActivity($"Selected identity {ShortId(identity.Id)}.");
+        RenderSnapshot();
+    }
+
+    private void ProviderSearchTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) =>
+        ApplyProviderFilter();
+
     private void ClearActivityButton_Click(object sender, RoutedEventArgs e) => ActivityText.Clear();
+
+    private void CopyActivityButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(ActivityText.Text)) Clipboard.SetText(ActivityText.Text);
+    }
+
+    private async void RestartBackendButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunOperationAsync("Restarting the private backend…", "Backend restarted.", async () =>
+        {
+            await _backend.RestartAsync();
+            await RefreshSnapshotAsync(showErrors: true);
+            await RefreshProvidersAsync();
+        });
+    }
 
     private async Task RefreshProvidersAsync()
     {
         var selectedId = (ProviderComboBox.SelectedItem as ProviderProposal)?.ProviderId;
-        var providers = await _backend.GetProvidersAsync();
-        ProviderComboBox.ItemsSource = providers;
-        ProviderComboBox.SelectedItem = providers.FirstOrDefault(p => p.ProviderId == selectedId) ?? providers.FirstOrDefault();
-        ProviderCountText.Text = providers.Count == 1 ? "1 provider" : $"{providers.Count} providers";
-        AppendActivity(providers.Count == 0
+        _providers = await _backend.GetProvidersAsync();
+        ApplyProviderFilter(selectedId);
+        AppendActivity(_providers.Count == 0
             ? "No WireGuard providers were returned. Check network access and refresh again."
-            : $"Loaded {providers.Count} WireGuard providers.");
+            : $"Loaded {_providers.Count} WireGuard providers. Use search to filter the list.");
         RenderSelectedProvider();
         UpdateControls();
     }
@@ -209,7 +404,18 @@ public partial class MainWindow : Window
         _refreshing = true;
         try
         {
-            _snapshot = await _backend.GetSnapshotAsync();
+            _snapshot = await _backend.GetSnapshotAsync(_selectedIdentityId);
+            if (_snapshot.SelectedIdentityId is null)
+            {
+                var preferred = _snapshot.Identities.FirstOrDefault(identity =>
+                    identity.Id.Equals(_snapshot.Connection.ConsumerId, StringComparison.OrdinalIgnoreCase));
+                if (preferred is null && _snapshot.Identities.Count == 1) preferred = _snapshot.Identities[0];
+                if (preferred is not null)
+                {
+                    SelectIdentity(preferred.Id);
+                    _snapshot = _snapshot with { SelectedIdentityId = preferred.Id };
+                }
+            }
             RenderSnapshot();
         }
         catch (Exception ex)
@@ -227,6 +433,7 @@ public partial class MainWindow : Window
     {
         var connected = _snapshot.IsConnected;
         var statusUnavailable = _snapshot.Connection.Status.Equals("STATUS_UNAVAILABLE", StringComparison.OrdinalIgnoreCase);
+        RenderBrowserReadiness();
 
         if (!_snapshot.NodeUp)
         {
@@ -238,9 +445,12 @@ public partial class MainWindow : Window
         }
         else if (connected)
         {
-            ConnectionStatusText.Text = "Privacy is active";
-            ConnectionDetailText.Text = "The browser-scoped provider proxy is ready.";
-            ConnectionStatusDot.Fill = Brush("Success");
+            var privacyVerified = _browserReadiness.State is BrowserReadinessState.Ready or BrowserReadinessState.BrowserRunning;
+            ConnectionStatusText.Text = privacyVerified ? "Privacy is active" : "Privacy checks incomplete";
+            ConnectionDetailText.Text = privacyVerified
+                ? "The app-owned browser proxy and locked policy are verified."
+                : _browserReadiness.Summary;
+            ConnectionStatusDot.Fill = privacyVerified ? Brush("Success") : Brush("Warning");
             MainBackendText.Text = "Online";
             MainBackendDetailText.Text = "Myst control is ready";
         }
@@ -266,14 +476,18 @@ public partial class MainWindow : Window
             ? "No active provider"
             : $"Provider: {activeProvider.DisplayName}";
 
+        RenderIdentitySelector();
         if (_snapshot.Identity is null)
         {
-            IdentityAddressText.Text = "No identity created";
-            IdentityStatusBadgeText.Text = "Not created";
+            var hasIdentities = _snapshot.Identities.Count > 0;
+            IdentityAddressText.Text = hasIdentities ? "Choose an identity above" : "No identity created";
+            IdentityStatusBadgeText.Text = hasIdentities ? "Select one" : "Not created";
             IdentityStatusBadge.Background = new SolidColorBrush(Color.FromRgb(0xED, 0xF1, 0xF0));
-            IdentityHelpText.Text = "Accept the terms, then create an identity to begin.";
-            MainIdentityText.Text = "Not created";
-            MainIdentityDetailText.Text = "Identity required";
+            IdentityHelpText.Text = hasIdentities
+                ? "Select the identity to use. Sensitive actions always apply to the explicit selection."
+                : "Accept the terms, then create or import an identity to begin.";
+            MainIdentityText.Text = hasIdentities ? "Selection required" : "Not created";
+            MainIdentityDetailText.Text = hasIdentities ? $"{_snapshot.Identities.Count} available" : "Identity required";
             WalletBalanceText.Text = "—";
             WalletPaymentStatusText.Text = "Create an identity to view payment status.";
             MainBalanceText.Text = "— MYST";
@@ -301,10 +515,6 @@ public partial class MainWindow : Window
         TermsVersionText.Text = _snapshot.Terms is null
             ? "Terms status is unavailable."
             : $"Current version: {_snapshot.Terms.CurrentVersion}";
-
-        BrowserReadinessText.Text = connected
-            ? "Ready. Browser traffic will use the selected provider with no direct fallback."
-            : "Connect to a provider before launching the browser.";
 
         FooterStatusText.Text = !_snapshot.NodeUp
             ? "Native UI · Waiting for backend"
@@ -349,24 +559,32 @@ public partial class MainWindow : Window
         var identity = _snapshot.Identity;
         var hasIdentity = identity is not null;
         var termsAccepted = _snapshot.Terms?.IsCurrent == true;
-        var registrationReady = identity is not null && (identity.IsRegistered || identity.RegistrationInProgress);
+        var registrationReady = identity?.IsRegistered == true;
+        var paymentEligible = identity is not null && (identity.IsRegistered || identity.RegistrationInProgress);
         var registrationKnown = identity is not null &&
             !identity.RegistrationStatus.Equals("Unavailable", StringComparison.OrdinalIgnoreCase);
         var hasProvider = ProviderComboBox.SelectedItem is ProviderProposal;
         var available = !_busy && _snapshot.NodeUp;
 
         AcceptTermsCheckBox.IsEnabled = available && !termsAccepted && _snapshot.Terms is not null;
-        CreateIdentityButton.IsEnabled = available && termsAccepted && !hasIdentity;
-        RegisterIdentityButton.IsEnabled = available && termsAccepted && hasIdentity && registrationKnown && !registrationReady;
+        CreateIdentityButton.IsEnabled = available && termsAccepted && !_snapshot.IsConnected;
+        ImportIdentityButton.IsEnabled = available && !_snapshot.IsConnected;
+        IdentityComboBox.IsEnabled = available && !_snapshot.IsConnected && _snapshot.Identities.Count > 0;
+        UnlockIdentityButton.IsEnabled = available && hasIdentity;
+        RegisterIdentityButton.IsEnabled = available && termsAccepted && hasIdentity && registrationKnown &&
+            !registrationReady && identity?.RegistrationInProgress != true;
         RefreshIdentityButton.IsEnabled = available;
         RefreshBalanceButton.IsEnabled = available && hasIdentity;
-        TopUpButton.IsEnabled = available && registrationReady;
+        TopUpButton.IsEnabled = available && paymentEligible;
         RefreshProvidersButton.IsEnabled = available;
         ProviderComboBox.IsEnabled = available && !_snapshot.IsConnected;
         ConnectButton.IsEnabled = available && termsAccepted && registrationReady && hasProvider && !_snapshot.IsConnected;
         DisconnectButton.IsEnabled = !_busy && _snapshot.IsConnected;
         DisconnectMainButton.IsEnabled = !_busy && _snapshot.IsConnected;
-        LaunchBrowserButton.IsEnabled = !_busy && _snapshot.IsConnected;
+        LaunchBrowserButton.IsEnabled = !_busy && _browserReadiness.CanLaunch;
+        RestartBackendButton.IsEnabled = !_busy && _bundleValidated &&
+            _backend.LifecycleState != BackendLifecycleState.Starting;
+        BackendLifecycleText.Text = FormatLifecycleState(_backend.LifecycleState);
 
         ConnectionPrerequisiteText.Text = ConnectionPrerequisite(termsAccepted, hasIdentity, registrationReady, hasProvider);
     }
@@ -442,6 +660,37 @@ public partial class MainWindow : Window
         ActivityText.ScrollToEnd();
     }
 
+    private void SelectIdentity(string id)
+    {
+        _selectedIdentityId = id;
+        if (!_stateStore.SaveSelectedIdentityId(id))
+        {
+            AppendActivity("The identity selection will be used for this session but could not be saved.");
+        }
+    }
+
+    private string? PromptForExistingPassphrase(string identityId, string actionLabel) =>
+        PromptForPassphrase(
+            actionLabel,
+            $"Enter the passphrase for {ShortId(identityId)}. It is sent only to the loopback Myst backend for this operation and is never saved or logged.",
+            actionLabel,
+            requireConfirmation: false,
+            minimumLength: 1);
+
+    private string? PromptForPassphrase(
+        string heading,
+        string description,
+        string actionLabel,
+        bool requireConfirmation,
+        int minimumLength)
+    {
+        var window = new PassphraseWindow(heading, description, actionLabel, requireConfirmation, minimumLength)
+        {
+            Owner = this,
+        };
+        return window.ShowDialog() == true ? window.TakePassphrase() : null;
+    }
+
     private void SetIdentityBadge(IdentityDetails identity)
     {
         if (identity.IsRegistered)
@@ -487,6 +736,15 @@ public partial class MainWindow : Window
         "RegistrationError" => "Registration error",
         "" => "Unknown",
         _ => status,
+    };
+
+    private static string FormatLifecycleState(BackendLifecycleState state) => state switch
+    {
+        BackendLifecycleState.Starting => "Starting",
+        BackendLifecycleState.Running => "Running",
+        BackendLifecycleState.Crashed => "Crashed · restart available",
+        BackendLifecycleState.Failed => "Failed · restart available",
+        _ => "Stopped",
     };
 
     private SolidColorBrush Brush(string key) => (SolidColorBrush)FindResource(key);

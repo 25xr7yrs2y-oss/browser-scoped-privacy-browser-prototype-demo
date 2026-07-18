@@ -27,6 +27,9 @@ jobs:
       - name: Validate backend controls and wallet workflow
         shell: powershell
         run: .\tests\Test-BackendControls.ps1
+      - name: Validate product and security hardening
+        shell: powershell
+        run: .\tests\Test-ProductHardening.ps1
       - name: Validate version and WPF/embedded icons
         shell: powershell
         run: .\tests\Test-ReleaseMetadata.ps1

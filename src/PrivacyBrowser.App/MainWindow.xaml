@@ -97,8 +97,9 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Width="36" Height="36" CornerRadius="18" Background="{StaticResource PrimarySoft}" VerticalAlignment="Top">
-                                <TextBlock Text="✓" Foreground="{StaticResource Primary}" FontSize="18" FontWeight="Bold"
+                            <Border x:Name="BrowserReadinessIcon" Width="36" Height="36" CornerRadius="18"
+                                    Background="#EDF1F0" VerticalAlignment="Top">
+                                <TextBlock x:Name="BrowserReadinessGlyph" Text="…" Foreground="#68736F" FontSize="18" FontWeight="Bold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <StackPanel Grid.Column="1" Margin="14,0,20,0">
@@ -144,6 +145,20 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="16">
                             <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="Backend service" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock x:Name="BackendLifecycleText" Text="Starting" Style="{StaticResource SecondaryText}"
+                                               HorizontalAlignment="Right" />
+                                </Grid>
+                                <TextBlock Text="Privacy Browser supervises the Myst process it starts. Restart is available after a crash or failed startup."
+                                           Style="{StaticResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,9" />
+                                <Button x:Name="RestartBackendButton" Content="Restart backend" Click="RestartBackendButton_Click"
+                                        Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}" Margin="0,12,0,0" Padding="16">
+                            <StackPanel>
                                 <TextBlock Text="Terms" Style="{StaticResource SectionTitle}" />
                                 <TextBlock Text="Required before creating or using an identity." Style="{StaticResource SecondaryText}" Margin="0,4,0,10" />
                                 <CheckBox x:Name="AcceptTermsCheckBox" Click="AcceptTermsCheckBox_Click"
@@ -161,11 +176,19 @@
                                         <TextBlock x:Name="IdentityStatusBadgeText" Text="Checking" FontSize="11" FontWeight="SemiBold" />
                                     </Border>
                                 </Grid>
+                                <TextBlock Text="Selected identity" FontWeight="SemiBold" Margin="0,12,0,5" />
+                                <ComboBox x:Name="IdentityComboBox" DisplayMemberPath="DisplayName"
+                                          SelectionChanged="IdentityComboBox_SelectionChanged"
+                                          AutomationProperties.Name="Selected Mysterium identity" />
                                 <TextBlock x:Name="IdentityAddressText" Text="Checking identity…" TextWrapping="Wrap"
-                                           FontFamily="Consolas" FontSize="12" Margin="0,12,0,0" />
+                                           FontFamily="Consolas" FontSize="12" Margin="0,8,0,0" />
                                 <TextBlock x:Name="IdentityHelpText" Style="{StaticResource SecondaryText}" Margin="0,6,0,7" />
                                 <WrapPanel>
                                     <Button x:Name="CreateIdentityButton" Content="Create identity" Click="CreateIdentityButton_Click" />
+                                    <Button x:Name="ImportIdentityButton" Content="Import identity" Click="ImportIdentityButton_Click"
+                                            Style="{StaticResource SecondaryButton}" />
+                                    <Button x:Name="UnlockIdentityButton" Content="Unlock" Click="UnlockIdentityButton_Click"
+                                            Style="{StaticResource SecondaryButton}" IsEnabled="False" />
                                     <Button x:Name="RegisterIdentityButton" Content="Register" Click="RegisterIdentityButton_Click"
                                             Style="{StaticResource SecondaryButton}" IsEnabled="False" />
                                     <Button x:Name="RefreshIdentityButton" Content="Refresh status" Click="RefreshIdentityButton_Click"
@@ -199,6 +222,9 @@
                                                FontSize="12" HorizontalAlignment="Right" />
                                 </Grid>
                                 <TextBlock Text="Available WireGuard providers" FontWeight="SemiBold" Margin="0,13,0,6" />
+                                <TextBox x:Name="ProviderSearchTextBox" TextChanged="ProviderSearchTextBox_TextChanged"
+                                         AutomationProperties.Name="Search providers" Margin="0,0,0,7"
+                                         ToolTip="Search by country, city, provider ID, or ISP" />
                                 <ComboBox x:Name="ProviderComboBox" DisplayMemberPath="DisplayName"
                                           SelectionChanged="ProviderComboBox_SelectionChanged" />
                                 <TextBlock x:Name="ProviderDetailText" Text="Refresh to discover providers."
@@ -219,8 +245,12 @@
                             <StackPanel>
                                 <Grid>
                                     <TextBlock Text="Activity" Style="{StaticResource SectionTitle}" />
-                                    <Button Content="Clear" HorizontalAlignment="Right" Click="ClearActivityButton_Click"
-                                            Style="{StaticResource NeutralButton}" Padding="10,4" MinHeight="28" Margin="0" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Copy" Click="CopyActivityButton_Click"
+                                                Style="{StaticResource NeutralButton}" Padding="10,4" MinHeight="28" />
+                                        <Button Content="Clear" Click="ClearActivityButton_Click"
+                                                Style="{StaticResource NeutralButton}" Padding="10,4" MinHeight="28" Margin="0" />
+                                    </StackPanel>
                                 </Grid>
                                 <TextBox x:Name="ActivityText" Height="170" IsReadOnly="True" TextWrapping="Wrap"
                                          VerticalScrollBarVisibility="Auto" Background="#F7F9F8" Padding="9"

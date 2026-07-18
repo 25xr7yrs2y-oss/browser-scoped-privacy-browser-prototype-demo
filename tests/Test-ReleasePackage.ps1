@@ -29,8 +29,25 @@ try {
     $exe = Join-Path $root "PrivacyBrowser.exe"
     $browser = Join-Path $root "vendor\mullvad-browser\mullvadbrowser.exe"
     $backend = Join-Path $root "vendor\myst-lmprove\resources\app.asar.unpacked\node_modules\@mysteriumnetwork\node\bin\win\x64\myst.exe"
-    foreach ($path in @($exe, $browser, $backend, (Join-Path $root "config\policies.json"), (Join-Path $root "docs\SOURCE_OFFER.md"))) {
+    $bundleManifest = Join-Path $root "bundle-manifest.json"
+    foreach ($path in @($exe, $browser, $backend, (Join-Path $root "config\policies.json"),
+            (Join-Path $root "docs\SOURCE_OFFER.md"), $bundleManifest)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Portable package content missing: $path" }
+    }
+    $manifest = Get-Content -LiteralPath $bundleManifest -Raw | ConvertFrom-Json
+    if ($manifest.releaseVersion -ne $version -or @($manifest.components).Count -lt 4) {
+        throw "Bundle manifest release identity or component list is incomplete."
+    }
+    foreach ($component in $manifest.components) {
+        $componentPath = Join-Path $root ([string]$component.path).Replace('/', [IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -LiteralPath $componentPath -PathType Leaf)) {
+            throw "Manifest component is missing: $($component.path)"
+        }
+        $item = Get-Item -LiteralPath $componentPath
+        $actualHash = (Get-FileHash -LiteralPath $componentPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($item.Length -ne [long]$component.length -or $actualHash -ne [string]$component.sha256) {
+            throw "Manifest component does not match: $($component.path)"
+        }
     }
     if (Get-ChildItem -LiteralPath $root -Recurse -File -Filter "MysteriumDark-Setup*.exe") {
         throw "Portable package must not contain or execute the upstream service-installing backend installer."

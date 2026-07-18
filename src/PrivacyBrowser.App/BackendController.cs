@@ -22,6 +22,7 @@ public sealed class BackendController : IAsyncDisposable
     private readonly AppOptions _options;
     private readonly HttpClient _client;
     private Process? _process;
+    private bool _stopping;
 
     public BackendController(AppOptions options)
     {
@@ -34,66 +35,98 @@ public sealed class BackendController : IAsyncDisposable
     }
 
     public event Action<string>? Log;
+    public event Action<BackendLifecycleState>? LifecycleChanged;
     public int? OwnedProcessId => _process?.Id;
+    public BackendLifecycleState LifecycleState { get; private set; } = BackendLifecycleState.Stopped;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        if (_options.SkipBackendLaunch)
+        SetLifecycle(BackendLifecycleState.Starting);
+        try
         {
-            Log?.Invoke("Using an already-running backend as requested.");
+            if (_options.SkipBackendLaunch)
+            {
+                Log?.Invoke("Using an already-running backend as requested. Browser launch remains disabled because ownership cannot be verified.");
+                await WaitUntilReadyAsync(cancellationToken);
+                SetLifecycle(BackendLifecycleState.Running);
+                return;
+            }
+
+            if (await IsHealthyAsync(cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"A Myst control endpoint is already listening on 127.0.0.1:{ControlPort}. " +
+                    "Stop it first, or use --skip-backend-launch for diagnostics only.");
+            }
+
+            var nodeExe = ResolveNodeExecutable(_options.BackendExe);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = nodeExe,
+                WorkingDirectory = Path.GetDirectoryName(nodeExe)!,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            foreach (var argument in new[]
+            {
+                "--ui.enable=false",
+                "--usermode",
+                "--proxymode",
+                "--proxy.bind.address=127.0.0.1",
+                "--consumer",
+                "--tequilapi.address=127.0.0.1",
+                $"--tequilapi.port={ControlPort}",
+                "--discovery.type=api",
+                "daemon",
+            })
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+            process.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) Log?.Invoke(e.Data); };
+            process.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) Log?.Invoke(e.Data); };
+            process.Exited += (_, _) =>
+            {
+                var exitCode = TryGetExitCode(process);
+                Log?.Invoke($"Backend exited with code {exitCode}.");
+                if (!_stopping) SetLifecycle(BackendLifecycleState.Crashed);
+            };
+            _process = process;
+
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("The Myst backend process could not be started.");
+            }
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            Log?.Invoke($"Started Myst backend process {process.Id} without the Electron web UI.");
             await WaitUntilReadyAsync(cancellationToken);
-            return;
+            SetLifecycle(BackendLifecycleState.Running);
         }
-
-        if (await IsHealthyAsync(cancellationToken))
+        catch
         {
-            throw new InvalidOperationException(
-                $"A Myst control endpoint is already listening on 127.0.0.1:{ControlPort}. " +
-                "Stop it first, or use --skip-backend-launch to adopt it explicitly.");
+            SetLifecycle(BackendLifecycleState.Failed);
+            throw;
         }
-
-        var nodeExe = ResolveNodeExecutable(_options.BackendExe);
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = nodeExe,
-            WorkingDirectory = Path.GetDirectoryName(nodeExe)!,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        foreach (var argument in new[]
-        {
-            "--ui.enable=false",
-            "--usermode",
-            "--proxymode",
-            "--proxy.bind.address=127.0.0.1",
-            "--consumer",
-            "--tequilapi.address=127.0.0.1",
-            $"--tequilapi.port={ControlPort}",
-            "--discovery.type=api",
-            "daemon",
-        })
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        _process.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) Log?.Invoke(e.Data); };
-        _process.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) Log?.Invoke(e.Data); };
-        _process.Exited += (_, _) => Log?.Invoke($"Backend exited with code {_process?.ExitCode}.");
-
-        if (!_process.Start())
-        {
-            throw new InvalidOperationException("The Myst backend process could not be started.");
-        }
-        _process.BeginOutputReadLine();
-        _process.BeginErrorReadLine();
-        Log?.Invoke($"Started Myst backend process {_process.Id} without the Electron web UI.");
-        await WaitUntilReadyAsync(cancellationToken);
     }
 
-    public async Task<BackendSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
+    public async Task RestartAsync(CancellationToken cancellationToken = default)
+    {
+        if (_options.SkipBackendLaunch)
+        {
+            throw new InvalidOperationException("An adopted backend cannot be restarted safely. Start Privacy Browser without --skip-backend-launch.");
+        }
+
+        await StopOwnedProcessAsync(respectKeepRunning: false);
+        await StartAsync(cancellationToken);
+    }
+
+    public async Task<BackendSnapshot> GetSnapshotAsync(
+        string? selectedIdentityId = null,
+        CancellationToken cancellationToken = default)
     {
         if (!await IsHealthyAsync(cancellationToken))
         {
@@ -112,20 +145,37 @@ public sealed class BackendController : IAsyncDisposable
         AddIssue(identitiesTask.Result, issues);
         AddIssue(termsTask.Result, issues);
 
-        IdentityDetails? identity = null;
-        var id = identitiesTask.Result.Value?.Identities.FirstOrDefault()?.Id;
-        if (!string.IsNullOrWhiteSpace(id))
+        var identities = new List<IdentityDetails>();
+        var references = identitiesTask.Result.Value?.Identities
+            .Where(identity => !string.IsNullOrWhiteSpace(identity.Id))
+            .GroupBy(identity => identity.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray() ?? [];
+        var detailTasks = references.Select(reference => CaptureAsync("identity status",
+            () => GetAsync<IdentityDetails>($"identities/{Uri.EscapeDataString(reference.Id)}", cancellationToken),
+            cancellationToken)).ToArray();
+        await Task.WhenAll(detailTasks);
+        for (var index = 0; index < detailTasks.Length; index++)
         {
-            var identityResult = await CaptureAsync("identity status",
-                () => GetAsync<IdentityDetails>($"identities/{Uri.EscapeDataString(id)}", cancellationToken), cancellationToken);
+            var identityResult = detailTasks[index].Result;
             AddIssue(identityResult, issues);
-            identity = identityResult.Value ?? new IdentityDetails { Id = id, RegistrationStatus = "Unavailable" };
+            identities.Add(identityResult.Value ?? new IdentityDetails
+            {
+                Id = references[index].Id,
+                RegistrationStatus = "Unavailable",
+            });
         }
+
+        var resolvedSelection = identities.Any(identity =>
+            identity.Id.Equals(selectedIdentityId, StringComparison.OrdinalIgnoreCase))
+            ? selectedIdentityId
+            : null;
 
         return new BackendSnapshot(
             true,
             connectionTask.Result.Value ?? new ConnectionInfo { Status = "STATUS_UNAVAILABLE" },
-            identity,
+            identities,
+            resolvedSelection,
             termsTask.Result.Value,
             issues,
             DateTimeOffset.Now);
@@ -146,12 +196,37 @@ public sealed class BackendController : IAsyncDisposable
             .ToArray();
     }
 
-    public Task CreateIdentityAsync(CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Post, "identities", new { passphrase = "" }, cancellationToken);
-
-    public async Task RegisterIdentityAsync(string id, CancellationToken cancellationToken = default)
+    public Task<IdentityReference> CreateIdentityAsync(string passphrase, CancellationToken cancellationToken = default)
     {
-        await SendAsync(HttpMethod.Put, $"identities/{Uri.EscapeDataString(id)}/unlock", new { passphrase = "" }, cancellationToken);
+        ValidatePassphrase(passphrase);
+        return SendAsync<IdentityReference>(HttpMethod.Post, "identities", new { passphrase }, cancellationToken);
+    }
+
+    public async Task<IdentityReference> ImportIdentityAsync(
+        byte[] encryptedKey,
+        string currentPassphrase,
+        CancellationToken cancellationToken = default)
+    {
+        if (encryptedKey.Length == 0) throw new InvalidOperationException("The selected identity file is empty.");
+        ValidatePassphrase(currentPassphrase);
+        return await SendAsync<IdentityReference>(HttpMethod.Post, "identities-import", new
+        {
+            data = encryptedKey,
+            current_passphrase = currentPassphrase,
+            new_passphrase = currentPassphrase,
+            set_default = true,
+        }, cancellationToken);
+    }
+
+    public Task UnlockIdentityAsync(string id, string passphrase, CancellationToken cancellationToken = default)
+    {
+        ValidatePassphrase(passphrase);
+        return SendAsync(HttpMethod.Put, $"identities/{Uri.EscapeDataString(id)}/unlock", new { passphrase }, cancellationToken);
+    }
+
+    public async Task RegisterIdentityAsync(string id, string passphrase, CancellationToken cancellationToken = default)
+    {
+        await UnlockIdentityAsync(id, passphrase, cancellationToken);
         await SendAsync(HttpMethod.Post, $"identities/{Uri.EscapeDataString(id)}/register", new { }, cancellationToken);
     }
 
@@ -217,9 +292,13 @@ public sealed class BackendController : IAsyncDisposable
             }, cancellationToken);
     }
 
-    public async Task ConnectAsync(string identityId, ProviderProposal provider, CancellationToken cancellationToken = default)
+    public async Task ConnectAsync(
+        string identityId,
+        string passphrase,
+        ProviderProposal provider,
+        CancellationToken cancellationToken = default)
     {
-        await SendAsync(HttpMethod.Put, $"identities/{Uri.EscapeDataString(identityId)}/unlock", new { passphrase = "" }, cancellationToken);
+        await UnlockIdentityAsync(identityId, passphrase, cancellationToken);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(75));
         await SendAsync(HttpMethod.Put, "connection", new
@@ -242,13 +321,18 @@ public sealed class BackendController : IAsyncDisposable
 
     public bool IsOwnedProxyListening()
     {
+        if (_process is null)
+        {
+            throw new InvalidOperationException(
+                "Browser launch is disabled for an adopted backend because proxy process ownership cannot be verified.");
+        }
         var listeners = TcpListenerInspector.GetListeners(ProxyPort);
         if (listeners.Count == 0) return false;
         if (listeners.Any(l => !IPAddress.IsLoopback(l.Address)))
         {
             throw new InvalidOperationException($"Proxy port {ProxyPort} has a non-loopback listener.");
         }
-        if (_process is not null && listeners.Any(l => l.ProcessId != _process.Id))
+        if (listeners.Any(l => l.ProcessId != _process.Id))
         {
             throw new InvalidOperationException($"Proxy port {ProxyPort} is owned by an unexpected process.");
         }
@@ -257,7 +341,13 @@ public sealed class BackendController : IAsyncDisposable
 
     public async Task StopAsync()
     {
-        if (_options.KeepBackendRunning || _process is null) return;
+        await StopOwnedProcessAsync(respectKeepRunning: true);
+    }
+
+    private async Task StopOwnedProcessAsync(bool respectKeepRunning)
+    {
+        if ((respectKeepRunning && _options.KeepBackendRunning) || _process is null) return;
+        _stopping = true;
 
         try
         {
@@ -280,12 +370,18 @@ public sealed class BackendController : IAsyncDisposable
         {
             // The owned process exited between checks.
         }
+        finally
+        {
+            _process.Dispose();
+            _process = null;
+            _stopping = false;
+            SetLifecycle(BackendLifecycleState.Stopped);
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
-        _process?.Dispose();
         _client.Dispose();
     }
 
@@ -417,6 +513,26 @@ public sealed class BackendController : IAsyncDisposable
         catch (OperationCanceledException)
         {
             return false;
+        }
+    }
+
+    private void SetLifecycle(BackendLifecycleState state)
+    {
+        LifecycleState = state;
+        LifecycleChanged?.Invoke(state);
+    }
+
+    private static string TryGetExitCode(Process process)
+    {
+        try { return process.ExitCode.ToString(CultureInfo.InvariantCulture); }
+        catch (InvalidOperationException) { return "unknown"; }
+    }
+
+    private static void ValidatePassphrase(string passphrase)
+    {
+        if (string.IsNullOrEmpty(passphrase))
+        {
+            throw new InvalidOperationException("Enter the identity passphrase and try again.");
         }
     }
 
