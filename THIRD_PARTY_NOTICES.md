@@ -1,6 +1,6 @@
 # Third-Party Components
 
-The repository source does not vendor third-party binaries. The version 1.0.2
+The repository source does not vendor third-party binaries. The version 1.0.3
 portable release redistributes pinned, unmodified runtime files as described
 below and in `docs/DEPENDENCIES.md` inside the package.
 
@@ -21,8 +21,8 @@ below and in `docs/DEPENDENCIES.md` inside the package.
 - Desktop license: MIT; bundled custom node: GNU General Public License v3
 - Distribution: only the required `myst.exe` node is included; the Electron
   shell, supervisor, and installer are excluded.
-- Corresponding source: attached to the version 1.0.2 release as
-  `PrivacyBrowser-1.0.2-myst-lmprove-source-227d63b.tar.gz`.
+- Corresponding source: attached to the version 1.0.3 release as
+  `PrivacyBrowser-1.0.3-myst-lmprove-source-227d63b.tar.gz`.
 
 Users must review and comply with the licenses and terms shipped by each
 third-party component.

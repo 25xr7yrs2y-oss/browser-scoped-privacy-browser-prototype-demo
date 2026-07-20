@@ -15,6 +15,22 @@ jobs:
       - name: Build native Windows application
         shell: powershell
         run: .\Build.ps1
+      - name: Smoke start native Windows application
+        shell: powershell
+        run: |
+          $process = Start-Process -FilePath .\app\PrivacyBrowser.exe -PassThru
+          try {
+            Start-Sleep -Seconds 5
+            if ($process.HasExited) {
+              throw "PrivacyBrowser.exe exited during startup with code $($process.ExitCode)."
+            }
+          } finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+              $process.WaitForExit()
+            }
+            $process.Dispose()
+          }
       - name: Validate locked policy
         shell: powershell
         run: .\tests\Test-Configuration.ps1
@@ -52,12 +68,12 @@ jobs:
       - name: Upload native application
         uses: actions/upload-artifact@v4
         with:
-          name: PrivacyBrowser-1.0.2-windows-x64-app
+          name: PrivacyBrowser-1.0.3-windows-x64-app
           path: app/
           if-no-files-found: error
       - name: Upload self-contained QA application
         uses: actions/upload-artifact@v4
         with:
-          name: PrivacyBrowser-1.0.2-windows-x64-self-contained
+          name: PrivacyBrowser-1.0.3-windows-x64-self-contained
           path: qa-app/
           if-no-files-found: error
