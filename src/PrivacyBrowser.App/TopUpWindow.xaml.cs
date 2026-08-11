@@ -77,9 +77,16 @@ public partial class TopUpWindow : Window
 
         await RunAsync(async () =>
         {
-            CreatedOrder = await _backend.CreatePaymentOrderAsync(
+            _paymentUri = null;
+            CreatedOrder = null;
+            OpenPaymentButton.Visibility = Visibility.Collapsed;
+            ResultBorder.Visibility = Visibility.Collapsed;
+
+            var order = await _backend.CreatePaymentOrderAsync(
                 _identityId, gateway, amount, currency, CountryTextBox.Text.Trim(), StateTextBox.Text.Trim());
-            _paymentUri = CreatedOrder.GetPaymentUri(gateway.Name);
+            var paymentUri = order.GetPaymentUri(gateway.Name);
+            CreatedOrder = order;
+            _paymentUri = paymentUri;
             ResultTitleText.Text = "Payment order created";
             ResultDetailText.Text = $"Order {CreatedOrder.Id}\nStatus: {CreatedOrder.Status}\n" +
                 $"Receive: {CreatedOrder.ReceiveMyst} MYST\nPay: {CreatedOrder.PayAmount} {CreatedOrder.PayCurrency}";

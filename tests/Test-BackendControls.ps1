@@ -71,8 +71,15 @@ foreach ($forbidden in @('FindUri(', 'GetRawText()')) {
 if (-not $paymentParser.Contains('CoinGatePaymentUrlField = "paymentUrl"') -or
     -not $paymentParser.Contains('Uri.UriSchemeHttps') -or
     -not $paymentParser.Contains('uri.UserInfo') -or
-    -not $paymentParser.Contains('uri.IsDefaultPort')) {
+    -not $paymentParser.Contains('uri.IsDefaultPort') -or
+    -not $paymentParser.Contains('HasExplicitEmptyPort(value)')) {
     throw "Payment target parser security invariant missing"
+}
+if (-not $topUpCode.Contains('_paymentUri = null;') -or
+    -not $topUpCode.Contains('CreatedOrder = null;') -or
+    $topUpCode.IndexOf('_paymentUri = null;', [StringComparison]::Ordinal) -gt
+        $topUpCode.IndexOf('_backend.CreatePaymentOrderAsync(', [StringComparison]::Ordinal)) {
+    throw "A new payment-order attempt does not clear the previously validated target"
 }
 
 dotnet run --project (Join-Path $root "tests\PrivacyBrowser.PaymentTargetParser.Tests\PrivacyBrowser.PaymentTargetParser.Tests.csproj") --configuration Release

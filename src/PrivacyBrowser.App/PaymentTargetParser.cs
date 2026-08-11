@@ -72,11 +72,35 @@ public static class PaymentTargetParser
         {
             throw new InvalidOperationException("The payment URL must not contain user information.");
         }
-        if (!uri.IsDefaultPort)
+        if (HasExplicitEmptyPort(value) || !uri.IsDefaultPort)
         {
             throw new InvalidOperationException("The payment URL must use the default HTTPS port.");
         }
 
         return uri;
+    }
+
+    // System.Uri normalizes an explicit empty port ("https://host:") to the default port,
+    // so inspect the raw authority before relying on IsDefaultPort.
+    private static bool HasExplicitEmptyPort(string value)
+    {
+        var authorityStart = value.IndexOf("://", StringComparison.Ordinal);
+        if (authorityStart < 0)
+        {
+            return true;
+        }
+
+        authorityStart += 3;
+        var authorityEnd = value.Length;
+        foreach (var separator in new[] { '/', '?', '#' })
+        {
+            var index = value.IndexOf(separator, authorityStart);
+            if (index >= 0 && index < authorityEnd)
+            {
+                authorityEnd = index;
+            }
+        }
+
+        return authorityEnd > authorityStart && value[authorityEnd - 1] == ':';
     }
 }
