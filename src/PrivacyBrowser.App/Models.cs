@@ -292,34 +292,6 @@ public sealed class PaymentOrder
     [JsonPropertyName("public_gateway_data")]
     public JsonElement PublicGatewayData { get; set; }
 
-    public Uri? FindPaymentUri() => FindUri(PublicGatewayData);
-
-    private static Uri? FindUri(JsonElement element)
-    {
-        if (element.ValueKind == JsonValueKind.String &&
-            Uri.TryCreate(element.GetString(), UriKind.Absolute, out var uri) &&
-            (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
-        {
-            return uri;
-        }
-
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in element.EnumerateObject())
-            {
-                var result = FindUri(property.Value);
-                if (result is not null) return result;
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                var result = FindUri(item);
-                if (result is not null) return result;
-            }
-        }
-
-        return null;
-    }
+    public Uri GetPaymentUri(string expectedGatewayName) =>
+        PaymentTargetParser.GetPaymentUri(expectedGatewayName, GatewayName, PublicGatewayData);
 }

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -80,7 +79,7 @@ public partial class TopUpWindow : Window
         {
             CreatedOrder = await _backend.CreatePaymentOrderAsync(
                 _identityId, gateway, amount, currency, CountryTextBox.Text.Trim(), StateTextBox.Text.Trim());
-            _paymentUri = CreatedOrder.FindPaymentUri();
+            _paymentUri = CreatedOrder.GetPaymentUri(gateway.Name);
             ResultTitleText.Text = "Payment order created";
             ResultDetailText.Text = $"Order {CreatedOrder.Id}\nStatus: {CreatedOrder.Status}\n" +
                 $"Receive: {CreatedOrder.ReceiveMyst} MYST\nPay: {CreatedOrder.PayAmount} {CreatedOrder.PayCurrency}";
@@ -106,11 +105,8 @@ public partial class TopUpWindow : Window
     private void CopyPaymentButton_Click(object sender, RoutedEventArgs e)
     {
         if (CreatedOrder is null) return;
-        var gatewayData = CreatedOrder.PublicGatewayData.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
-            ? ""
-            : CreatedOrder.PublicGatewayData.GetRawText();
         Clipboard.SetText($"Mysterium payment order: {CreatedOrder.Id}\nStatus: {CreatedOrder.Status}\n" +
-            $"Receive: {CreatedOrder.ReceiveMyst} MYST\nPay: {CreatedOrder.PayAmount} {CreatedOrder.PayCurrency}\n{gatewayData}");
+            $"Receive: {CreatedOrder.ReceiveMyst} MYST\nPay: {CreatedOrder.PayAmount} {CreatedOrder.PayCurrency}");
         CopyPaymentButton.Content = "Copied";
     }
 

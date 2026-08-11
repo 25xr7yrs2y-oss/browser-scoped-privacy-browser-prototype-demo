@@ -252,7 +252,9 @@ public sealed class BackendController : IAsyncDisposable
     public async Task<IReadOnlyList<PaymentGateway>> GetPaymentGatewaysAsync(CancellationToken cancellationToken = default)
     {
         var gateways = await GetAsync<List<PaymentGateway>>("v2/payment-order-gateways?options_currency=MYST", cancellationToken);
-        return gateways.Where(g => !string.IsNullOrWhiteSpace(g.Name) && g.Currencies.Count > 0).ToArray();
+        return gateways
+            .Where(g => PaymentTargetParser.SupportsGateway(g.Name) && g.Currencies.Count > 0)
+            .ToArray();
     }
 
     public async Task<PaymentOrder> CreatePaymentOrderAsync(
@@ -264,6 +266,10 @@ public sealed class BackendController : IAsyncDisposable
         string state,
         CancellationToken cancellationToken = default)
     {
+        if (!PaymentTargetParser.SupportsGateway(gateway.Name))
+        {
+            throw new InvalidOperationException("The selected payment gateway is not supported.");
+        }
         if (mystAmount <= 0) throw new ArgumentOutOfRangeException(nameof(mystAmount), "Top-up amount must be greater than zero.");
         if (gateway.OrderOptions.Minimum > 0 && mystAmount <= gateway.OrderOptions.Minimum)
         {

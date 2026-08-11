@@ -5,6 +5,8 @@ $backend = Get-Content (Join-Path $sourceRoot "BackendController.cs") -Raw
 $models = Get-Content (Join-Path $sourceRoot "Models.cs") -Raw
 $errors = Get-Content (Join-Path $sourceRoot "BackendErrors.cs") -Raw
 $window = Get-Content (Join-Path $sourceRoot "MainWindow.xaml") -Raw
+$topUpCode = Get-Content (Join-Path $sourceRoot "TopUpWindow.xaml.cs") -Raw
+$paymentParser = Get-Content (Join-Path $sourceRoot "PaymentTargetParser.cs") -Raw
 $windowCode = Get-Content (Join-Path $sourceRoot "MainWindow.xaml.cs") -Raw
 $topUp = Get-Content (Join-Path $sourceRoot "TopUpWindow.xaml") -Raw
 
@@ -52,5 +54,28 @@ if (-not $windowCode.Contains('registrationReady') -or
     -not $windowCode.Contains('Register the identity before connecting.')) {
     throw "Connect action does not expose or enforce the registration prerequisite"
 }
+
+foreach ($needle in @(
+        'if (!PaymentTargetParser.SupportsGateway(gateway.Name))',
+        'PaymentTargetParser.SupportsGateway(g.Name)',
+        'GetPaymentUri(gateway.Name)')) {
+    if (-not ($backend + $topUpCode).Contains($needle)) {
+        throw "Gateway-bound payment target control missing: $needle"
+    }
+}
+foreach ($forbidden in @('FindUri(', 'GetRawText()')) {
+    if (($models + $topUpCode).Contains($forbidden)) {
+        throw "Unsafe payment response handling remains: $forbidden"
+    }
+}
+if (-not $paymentParser.Contains('CoinGatePaymentUrlField = "paymentUrl"') -or
+    -not $paymentParser.Contains('Uri.UriSchemeHttps') -or
+    -not $paymentParser.Contains('uri.UserInfo') -or
+    -not $paymentParser.Contains('uri.IsDefaultPort')) {
+    throw "Payment target parser security invariant missing"
+}
+
+dotnet run --project (Join-Path $root "tests\PrivacyBrowser.PaymentTargetParser.Tests\PrivacyBrowser.PaymentTargetParser.Tests.csproj") --configuration Release
+if ($LASTEXITCODE -ne 0) { throw "Payment target parser runtime tests failed with code $LASTEXITCODE" }
 
 Write-Host "PASS: resilient backend state, wallet/payment, provider discovery, native controls, and friendly errors are present."
