@@ -55,6 +55,7 @@ public partial class MainWindow : Window
         _timer.Tick += async (_, _) => await RefreshSnapshotAsync(showErrors: false);
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
+        NavigateTo(AppPage.Home, focusHeading: false);
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -93,16 +94,45 @@ public partial class MainWindow : Window
         Close();
     }
 
-    private void ControlsButton_Click(object sender, RoutedEventArgs e) =>
-        SetControls(ControlPanel.Visibility != Visibility.Visible);
+    private void ControlsButton_Click(object sender, RoutedEventArgs e) => NavigateTo(AppPage.Connection);
 
-    private void OpenControlsButton_Click(object sender, RoutedEventArgs e) => SetControls(true);
-
-    private void SetControls(bool open)
+    private void NavigateButton_Click(object sender, RoutedEventArgs e)
     {
-        ControlPanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        ControlColumn.Width = open ? new GridLength(440) : new GridLength(0);
-        ControlsButton.Content = open ? "Close controls" : "Controls";
+        if (sender is FrameworkElement { Tag: string target } &&
+            Enum.TryParse<AppPage>(target, ignoreCase: false, out var page))
+        {
+            NavigateTo(page);
+        }
+    }
+
+    private void NavigateTo(AppPage page, bool focusHeading = true)
+    {
+        var pages = new[]
+        {
+            (Page: AppPage.Home, View: HomePage, Button: HomeNavigationButton),
+            (Page: AppPage.Identity, View: IdentityPage, Button: IdentityNavigationButton),
+            (Page: AppPage.Wallet, View: WalletPage, Button: WalletNavigationButton),
+            (Page: AppPage.Connection, View: ConnectionPage, Button: ConnectionNavigationButton),
+            (Page: AppPage.BrowserAndDiagnostics, View: BrowserAndDiagnosticsPage, Button: BrowserNavigationButton),
+        };
+
+        foreach (var item in pages)
+        {
+            var selected = item.Page == page;
+            item.View.Visibility = selected ? Visibility.Visible : Visibility.Collapsed;
+            item.Button.Style = (Style)FindResource(selected ? "SelectedNavigationButton" : "NavigationButton");
+        }
+
+        (CurrentPageTitle.Text, CurrentPageDescription.Text) = page switch
+        {
+            AppPage.Identity => ("Identity", "Select, create, import, unlock, and register your Mysterium identity."),
+            AppPage.Wallet => ("Wallet", "Review the selected identity's balance and create a validated top-up order."),
+            AppPage.Connection => ("Connection", "Discover a WireGuard provider and manage the private connection."),
+            AppPage.BrowserAndDiagnostics => ("Browser & diagnostics", "Verify browser readiness and inspect the app-owned backend."),
+            _ => ("Home", "A concise summary of your privacy session."),
+        };
+
+        if (focusHeading) CurrentPageTitle.Focus();
     }
 
     private async void CreateIdentityButton_Click(object sender, RoutedEventArgs e)
@@ -438,7 +468,7 @@ public partial class MainWindow : Window
         if (!_snapshot.NodeUp)
         {
             ConnectionStatusText.Text = "Backend offline";
-            ConnectionDetailText.Text = "The native controller cannot reach the Myst backend. Open Controls for details.";
+            ConnectionDetailText.Text = "The native controller cannot reach the Myst backend. Open Browser & diagnostics for details.";
             ConnectionStatusDot.Fill = Brush("Danger");
             MainBackendText.Text = "Offline";
             MainBackendDetailText.Text = "Control service unavailable";
@@ -457,7 +487,7 @@ public partial class MainWindow : Window
         else if (statusUnavailable)
         {
             ConnectionStatusText.Text = "Status unavailable";
-            ConnectionDetailText.Text = "The backend is online, but one status service did not respond. You can retry from Controls.";
+            ConnectionDetailText.Text = "The backend is online, but one status service did not respond. Retry from the relevant page.";
             ConnectionStatusDot.Fill = Brush("Warning");
             MainBackendText.Text = "Partially online";
             MainBackendDetailText.Text = "Some data unavailable";
@@ -544,7 +574,7 @@ public partial class MainWindow : Window
         {
             ProviderDetailText.Text = "Refresh to discover available WireGuard providers.";
             MainProviderText.Text = "None";
-            MainProviderDetailText.Text = "Choose in Controls";
+            MainProviderDetailText.Text = "Choose on Connection";
             return;
         }
 
@@ -580,7 +610,6 @@ public partial class MainWindow : Window
         ProviderComboBox.IsEnabled = available && !_snapshot.IsConnected;
         ConnectButton.IsEnabled = available && termsAccepted && registrationReady && hasProvider && !_snapshot.IsConnected;
         DisconnectButton.IsEnabled = !_busy && _snapshot.IsConnected;
-        DisconnectMainButton.IsEnabled = !_busy && _snapshot.IsConnected;
         LaunchBrowserButton.IsEnabled = !_busy && _browserReadiness.CanLaunch;
         RestartBackendButton.IsEnabled = !_busy && _bundleValidated &&
             _backend.LifecycleState != BackendLifecycleState.Starting;
@@ -629,7 +658,6 @@ public partial class MainWindow : Window
         var message = BackendErrorTranslator.ToUserMessage(exception);
         AppendActivity($"Could not complete operation: {message}");
         ShowOperation(message, OperationKind.Error);
-        SetControls(true);
     }
 
     private void ShowOperation(string message, OperationKind kind)
@@ -757,5 +785,14 @@ public partial class MainWindow : Window
         Progress,
         Success,
         Error,
+    }
+
+    private enum AppPage
+    {
+        Home,
+        Identity,
+        Wallet,
+        Connection,
+        BrowserAndDiagnostics,
     }
 }
