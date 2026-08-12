@@ -85,4 +85,7 @@ if (-not $topUpCode.Contains('_paymentUri = null;') -or
 dotnet run --project (Join-Path $root "tests\PrivacyBrowser.PaymentTargetParser.Tests\PrivacyBrowser.PaymentTargetParser.Tests.csproj") --configuration Release
 if ($LASTEXITCODE -ne 0) { throw "Payment target parser runtime tests failed with code $LASTEXITCODE" }
 
+dotnet run --project (Join-Path $root "tests\PrivacyBrowser.OperationFeedback.Tests\PrivacyBrowser.OperationFeedback.Tests.csproj") --configuration Release
+if ($LASTEXITCODE -ne 0) { throw "Operation feedback runtime tests failed with code $LASTEXITCODE" }
+
 Write-Host "PASS: resilient backend state, wallet/payment, provider discovery, native controls, and friendly errors are present."

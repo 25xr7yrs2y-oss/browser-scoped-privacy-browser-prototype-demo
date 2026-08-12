@@ -68,9 +68,10 @@
 
                 <Border x:Name="OperationStatusBorder" Grid.Row="1" Background="{StaticResource PrimarySoft}" CornerRadius="8"
                         Padding="12" Margin="28,16,28,0" Visibility="Collapsed"
-                        AutomationProperties.LiveSetting="Polite">
+                        AutomationProperties.Name="Current page operation feedback">
                     <StackPanel>
-                        <TextBlock x:Name="OperationStatusText" Foreground="{StaticResource Primary}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="OperationStatusText" Foreground="{StaticResource Primary}" TextWrapping="Wrap"
+                                   AutomationProperties.Name="Current page operation status" AutomationProperties.LiveSetting="Polite" />
                         <ProgressBar x:Name="OperationProgressBar" Height="3" IsIndeterminate="True" Margin="0,9,0,0" />
                     </StackPanel>
                 </Border>

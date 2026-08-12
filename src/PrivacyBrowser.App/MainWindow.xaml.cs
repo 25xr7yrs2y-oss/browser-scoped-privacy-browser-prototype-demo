@@ -14,16 +14,17 @@ public partial class MainWindow : Window
     private readonly AppOptions _options;
     private readonly UserStateStore _stateStore;
     private readonly DispatcherTimer _timer;
+    private readonly OperationFeedbackStore _feedbackStore = new();
     private BackendSnapshot _snapshot = BackendSnapshot.Offline("The native controller is starting.");
     private BrowserReadiness _browserReadiness = new(BrowserReadinessState.Checking, "Checking browser readiness…", []);
     private IReadOnlyList<ProviderProposal> _providers = [];
     private string? _selectedIdentityId;
-    private bool _busy;
     private bool _refreshing;
     private bool _closing;
     private bool _renderingIdentities;
     private bool _bundleValidated;
     private string _lastIssueSignature = "";
+    private AppPage _currentPage;
 
     public MainWindow(AppOptions options)
     {
@@ -60,7 +61,7 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        await RunOperationAsync("Starting the private backend…", "Backend is ready.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.Home, "Starting the private backend…", "Backend is ready.", async () =>
         {
             await BundleValidator.ValidateAsync(_options);
             _bundleValidated = true;
@@ -71,7 +72,7 @@ public partial class MainWindow : Window
 
         if (_snapshot.NodeUp)
         {
-            await RunOperationAsync("Discovering WireGuard providers…", "Provider list is ready.", RefreshProvidersAsync);
+            await RunOperationAsync(OperationFeedbackArea.Connection, "Discovering WireGuard providers…", "Provider list is ready.", RefreshProvidersAsync);
         }
     }
 
@@ -123,6 +124,7 @@ public partial class MainWindow : Window
             item.Button.Style = (Style)FindResource(selected ? "SelectedNavigationButton" : "NavigationButton");
         }
 
+        _currentPage = page;
         (CurrentPageTitle.Text, CurrentPageDescription.Text) = page switch
         {
             AppPage.Identity => ("Identity", "Select, create, import, unlock, and register your Mysterium identity."),
@@ -132,6 +134,7 @@ public partial class MainWindow : Window
             _ => ("Home", "A concise summary of your privacy session."),
         };
 
+        RenderOperationFeedback();
         if (focusHeading) CurrentPageTitle.Focus();
     }
 
@@ -142,7 +145,7 @@ public partial class MainWindow : Window
             "Create a passphrase for this identity. It is required for registration and provider connections and is not stored by Privacy Browser.",
             "Create identity", requireConfirmation: true, minimumLength: 12);
         if (passphrase is null) return;
-        await RunOperationAsync("Creating a local identity…", "Identity created.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.Identity, "Creating a local identity…", "Identity created and selected.", async () =>
         {
             var identity = await _backend.CreateIdentityAsync(passphrase);
             SelectIdentity(identity.Id);
@@ -165,7 +168,8 @@ public partial class MainWindow : Window
         var info = new FileInfo(picker.FileName);
         if (info.Length <= 0 || info.Length > 1024 * 1024)
         {
-            ShowOperation("Choose a non-empty identity file smaller than 1 MB.", OperationKind.Error);
+            PublishFeedback(OperationFeedbackArea.Identity, OperationFeedbackKind.RetryableFailure,
+                "Choose a non-empty identity file smaller than 1 MB.");
             return;
         }
 
@@ -174,7 +178,7 @@ public partial class MainWindow : Window
             "Enter the passphrase that protects this encrypted key file. The imported key remains protected with the same passphrase.",
             "Import identity", requireConfirmation: true, minimumLength: 1);
         if (passphrase is null) return;
-        await RunOperationAsync("Importing the encrypted identity…", "Identity imported and selected.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.Identity, "Importing the encrypted identity…", "Identity imported and selected.", async () =>
         {
             var encryptedKey = await File.ReadAllBytesAsync(picker.FileName);
             try
@@ -197,7 +201,7 @@ public partial class MainWindow : Window
         if (_snapshot.Identity is null) return;
         string? passphrase = PromptForExistingPassphrase(_snapshot.Identity.Id, "Unlock identity");
         if (passphrase is null) return;
-        await RunOperationAsync("Unlocking the selected identity…", "Identity unlocked for this backend session.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.Identity, "Unlocking the selected identity…", "Identity unlocked for this backend session.", async () =>
         {
             await _backend.UnlockIdentityAsync(_snapshot.Identity.Id, passphrase);
             AppendActivity($"Unlocked identity {ShortId(_snapshot.Identity.Id)} for this backend session.");
@@ -213,7 +217,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await RunOperationAsync("Saving terms acceptance…", "Consumer terms accepted.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.Identity, "Saving terms acceptance…", "Consumer terms accepted.", async () =>
         {
             await _backend.AcceptConsumerTermsAsync(_snapshot.Terms.CurrentVersion);
             AppendActivity($"Accepted Mysterium consumer terms {_snapshot.Terms.CurrentVersion}.");
@@ -227,7 +231,7 @@ public partial class MainWindow : Window
         if (_snapshot.Identity is null) return;
         string? passphrase = PromptForExistingPassphrase(_snapshot.Identity.Id, "Register identity");
         if (passphrase is null) return;
-        await RunOperationAsync("Requesting identity registration…", "Registration requested. Refresh status as it progresses.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.Identity, "Requesting identity registration…", "Registration requested. Refresh status as it progresses.", async () =>
         {
             await _backend.RegisterIdentityAsync(_snapshot.Identity.Id, passphrase);
             AppendActivity("Identity registration started. A wallet top-up may be required to finish registration.");
@@ -238,7 +242,7 @@ public partial class MainWindow : Window
 
     private async void RefreshIdentityButton_Click(object sender, RoutedEventArgs e)
     {
-        await RunOperationAsync("Refreshing identity status…", "Identity status refreshed.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.Identity, "Refreshing identity status…", "Identity status refreshed.", async () =>
         {
             await RefreshSnapshotAsync(showErrors: true);
             var issue = _snapshot.Issues.FirstOrDefault(item =>
@@ -251,7 +255,7 @@ public partial class MainWindow : Window
     private async void RefreshBalanceButton_Click(object sender, RoutedEventArgs e)
     {
         if (_snapshot.Identity is null) return;
-        await RunOperationAsync("Refreshing MYST balance…", "Wallet balance refreshed.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.Wallet, "Refreshing MYST balance…", "Wallet balance refreshed.", async () =>
         {
             var balance = await _backend.RefreshBalanceAsync(_snapshot.Identity.Id);
             AppendActivity($"Wallet balance refreshed: {balance.BalanceTokens.Display} MYST.");
@@ -267,13 +271,15 @@ public partial class MainWindow : Window
         if (window.CreatedOrder is not null)
         {
             AppendActivity($"Payment order {window.CreatedOrder.Id} created; status {window.CreatedOrder.Status}.");
+            PublishFeedback(OperationFeedbackArea.Wallet, OperationFeedbackKind.Success,
+                "Top-up order created. Follow the payment window status until it completes.");
             await RefreshSnapshotAsync(showErrors: false);
         }
     }
 
     private async void RefreshProvidersButton_Click(object sender, RoutedEventArgs e)
     {
-        await RunOperationAsync("Discovering WireGuard providers…", "Provider list refreshed.", RefreshProvidersAsync);
+        await RunOperationAsync(OperationFeedbackArea.Connection, "Discovering WireGuard providers…", "Provider list refreshed.", RefreshProvidersAsync);
     }
 
     private async void ConnectButton_Click(object sender, RoutedEventArgs e)
@@ -281,7 +287,13 @@ public partial class MainWindow : Window
         if (_snapshot.Identity is null || ProviderComboBox.SelectedItem is not ProviderProposal provider) return;
         string? passphrase = PromptForExistingPassphrase(_snapshot.Identity.Id, "Connect to provider");
         if (passphrase is null) return;
-        await RunOperationAsync($"Connecting to {provider.DisplayName}…", "Provider connected. The browser is ready.", async () =>
+        await RunOperationAsync(
+            OperationFeedbackArea.Connection,
+            $"Connecting to {provider.DisplayName}…",
+            () => _browserReadiness.State == BrowserReadinessState.Ready
+                ? "Provider connected. Browser readiness verified."
+                : "Provider connected. Open Browser & diagnostics to complete browser readiness checks.",
+            async () =>
         {
             AppendActivity($"Connecting to {provider.DisplayName}.");
             await _backend.ConnectAsync(_snapshot.Identity.Id, passphrase, provider);
@@ -292,7 +304,7 @@ public partial class MainWindow : Window
 
     private async void DisconnectButton_Click(object sender, RoutedEventArgs e)
     {
-        await RunOperationAsync("Disconnecting from the provider…", "Provider disconnected.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.Connection, "Disconnecting from the provider…", "Provider disconnected.", async () =>
         {
             await _backend.DisconnectAsync();
             AppendActivity("Provider connection was disconnected.");
@@ -306,13 +318,14 @@ public partial class MainWindow : Window
         {
             Process process = _browser.Launch(_snapshot);
             AppendActivity($"Privacy browser started as process {process.Id}.");
-            ShowOperation("Privacy browser launched.", OperationKind.Success);
+            PublishFeedback(OperationFeedbackArea.BrowserAndDiagnostics, OperationFeedbackKind.Success,
+                "Privacy browser launched.");
             RenderBrowserReadiness();
             UpdateControls();
         }
         catch (Exception ex)
         {
-            ShowOperationError(ex);
+            PublishOperationError(OperationFeedbackArea.BrowserAndDiagnostics, ex);
         }
     }
 
@@ -393,6 +406,8 @@ public partial class MainWindow : Window
         SelectIdentity(identity.Id);
         _snapshot = _snapshot with { SelectedIdentityId = identity.Id };
         AppendActivity($"Selected identity {ShortId(identity.Id)}.");
+        PublishFeedback(OperationFeedbackArea.Identity, OperationFeedbackKind.Success,
+            "Identity selected for this session.");
         RenderSnapshot();
     }
 
@@ -408,7 +423,7 @@ public partial class MainWindow : Window
 
     private async void RestartBackendButton_Click(object sender, RoutedEventArgs e)
     {
-        await RunOperationAsync("Restarting the private backend…", "Backend restarted.", async () =>
+        await RunOperationAsync(OperationFeedbackArea.BrowserAndDiagnostics, "Restarting the private backend…", "Backend restarted.", async () =>
         {
             await _backend.RestartAsync();
             await RefreshSnapshotAsync(showErrors: true);
@@ -448,10 +463,10 @@ public partial class MainWindow : Window
             }
             RenderSnapshot();
         }
-        catch (Exception ex)
+        catch
         {
-            if (showErrors) ShowOperationError(ex);
             FooterStatusText.Text = "Backend status is temporarily unavailable.";
+            if (showErrors) throw;
         }
         finally
         {
@@ -594,7 +609,7 @@ public partial class MainWindow : Window
         var registrationKnown = identity is not null &&
             !identity.RegistrationStatus.Equals("Unavailable", StringComparison.OrdinalIgnoreCase);
         var hasProvider = ProviderComboBox.SelectedItem is ProviderProposal;
-        var available = !_busy && _snapshot.NodeUp;
+        var available = !_feedbackStore.IsBusy && _snapshot.NodeUp;
 
         AcceptTermsCheckBox.IsEnabled = available && !termsAccepted && _snapshot.Terms is not null;
         CreateIdentityButton.IsEnabled = available && termsAccepted && !_snapshot.IsConnected;
@@ -609,9 +624,9 @@ public partial class MainWindow : Window
         RefreshProvidersButton.IsEnabled = available;
         ProviderComboBox.IsEnabled = available && !_snapshot.IsConnected;
         ConnectButton.IsEnabled = available && termsAccepted && registrationReady && hasProvider && !_snapshot.IsConnected;
-        DisconnectButton.IsEnabled = !_busy && _snapshot.IsConnected;
-        LaunchBrowserButton.IsEnabled = !_busy && _browserReadiness.CanLaunch;
-        RestartBackendButton.IsEnabled = !_busy && _bundleValidated &&
+        DisconnectButton.IsEnabled = !_feedbackStore.IsBusy && _snapshot.IsConnected;
+        LaunchBrowserButton.IsEnabled = !_feedbackStore.IsBusy && _browserReadiness.CanLaunch;
+        RestartBackendButton.IsEnabled = !_feedbackStore.IsBusy && _bundleValidated &&
             _backend.LifecycleState != BackendLifecycleState.Starting;
         BackendLifecycleText.Text = FormatLifecycleState(_backend.LifecycleState);
 
@@ -630,48 +645,97 @@ public partial class MainWindow : Window
         return "Ready to connect.";
     }
 
-    private async Task RunOperationAsync(string progressMessage, string successMessage, Func<Task> action)
+    private Task RunOperationAsync(
+        OperationFeedbackArea area,
+        string progressMessage,
+        string successMessage,
+        Func<Task> action) =>
+        RunOperationAsync(area, progressMessage, () => successMessage, action);
+
+    private async Task RunOperationAsync(
+        OperationFeedbackArea area,
+        string progressMessage,
+        Func<string> successMessage,
+        Func<Task> action)
     {
-        if (_busy || _closing) return;
-        _busy = true;
-        ShowOperation(progressMessage, OperationKind.Progress);
+        if (_closing) return;
+        using var operation = _feedbackStore.TryStart(area, progressMessage);
+        if (operation is null) return;
+        RenderOperationFeedback();
         FooterStatusText.Text = progressMessage;
         UpdateControls();
         try
         {
             await action();
-            ShowOperation(successMessage, OperationKind.Success);
+            operation.Complete(OperationFeedbackKind.Success, successMessage());
         }
         catch (Exception ex)
         {
-            ShowOperationError(ex);
+            CompleteOperationError(operation, ex);
         }
         finally
         {
-            _busy = false;
+            operation.Dispose();
+            RenderOperationFeedback();
             UpdateControls();
         }
     }
 
-    private void ShowOperationError(Exception exception)
+    private void CompleteOperationError(OperationFeedbackSession operation, Exception exception)
     {
-        var message = BackendErrorTranslator.ToUserMessage(exception);
-        AppendActivity($"Could not complete operation: {message}");
-        ShowOperation(message, OperationKind.Error);
+        var error = BackendErrorTranslator.ToUserError(exception);
+        var kind = error.Kind == UserErrorKind.Retryable
+            ? OperationFeedbackKind.RetryableFailure
+            : OperationFeedbackKind.BlockingFailure;
+        AppendActivity($"Could not complete operation: {error.Message}");
+        operation.Complete(kind, error.Message);
     }
 
-    private void ShowOperation(string message, OperationKind kind)
+    private void PublishOperationError(OperationFeedbackArea area, Exception exception)
     {
-        OperationStatusText.Text = message;
-        OperationStatusBorder.Visibility = Visibility.Visible;
-        OperationProgressBar.Visibility = kind == OperationKind.Progress ? Visibility.Visible : Visibility.Collapsed;
-        switch (kind)
+        var error = BackendErrorTranslator.ToUserError(exception);
+        var kind = error.Kind == UserErrorKind.Retryable
+            ? OperationFeedbackKind.RetryableFailure
+            : OperationFeedbackKind.BlockingFailure;
+        AppendActivity($"Could not complete operation: {error.Message}");
+        PublishFeedback(area, kind, error.Message);
+    }
+
+    private void PublishFeedback(OperationFeedbackArea area, OperationFeedbackKind kind, string message)
+    {
+        _feedbackStore.Publish(area, kind, message);
+        RenderOperationFeedback();
+    }
+
+    private void RenderOperationFeedback()
+    {
+        var feedback = _feedbackStore.Get(FeedbackAreaForPage(_currentPage));
+        OperationStatusBorder.Visibility = feedback.Kind == OperationFeedbackKind.Idle
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        OperationProgressBar.Visibility = feedback.Kind == OperationFeedbackKind.Progress
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        OperationStatusText.Text = feedback.Kind switch
         {
-            case OperationKind.Success:
+            OperationFeedbackKind.Progress => $"In progress: {feedback.Message}",
+            OperationFeedbackKind.Success => $"Success: {feedback.Message}",
+            OperationFeedbackKind.RetryableFailure => $"Retryable issue: {feedback.Message}",
+            OperationFeedbackKind.BlockingFailure => $"Action required: {feedback.Message}",
+            _ => "",
+        };
+
+        switch (feedback.Kind)
+        {
+            case OperationFeedbackKind.Success:
                 OperationStatusBorder.Background = Brush("SuccessSoft");
                 OperationStatusText.Foreground = Brush("Success");
                 break;
-            case OperationKind.Error:
+            case OperationFeedbackKind.RetryableFailure:
+                OperationStatusBorder.Background = Brush("WarningSoft");
+                OperationStatusText.Foreground = Brush("Warning");
+                break;
+            case OperationFeedbackKind.BlockingFailure:
                 OperationStatusBorder.Background = Brush("DangerSoft");
                 OperationStatusText.Foreground = Brush("Danger");
                 break;
@@ -681,6 +745,15 @@ public partial class MainWindow : Window
                 break;
         }
     }
+
+    private static OperationFeedbackArea FeedbackAreaForPage(AppPage page) => page switch
+    {
+        AppPage.Identity => OperationFeedbackArea.Identity,
+        AppPage.Wallet => OperationFeedbackArea.Wallet,
+        AppPage.Connection => OperationFeedbackArea.Connection,
+        AppPage.BrowserAndDiagnostics => OperationFeedbackArea.BrowserAndDiagnostics,
+        _ => OperationFeedbackArea.Home,
+    };
 
     private void AppendActivity(string message)
     {
@@ -779,13 +852,6 @@ public partial class MainWindow : Window
 
     private static string ShortId(string id) => id.Length > 16 ? id[..10] + "…" + id[^4..] : id;
     private static string Capitalize(string value) => string.IsNullOrEmpty(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
-
-    private enum OperationKind
-    {
-        Progress,
-        Success,
-        Error,
-    }
 
     private enum AppPage
     {

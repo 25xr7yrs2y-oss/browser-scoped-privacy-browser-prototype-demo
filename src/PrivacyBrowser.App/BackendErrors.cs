@@ -19,6 +19,16 @@ public sealed class BackendApiException : InvalidOperationException
     public HttpStatusCode? StatusCode { get; }
 }
 
+public enum UserErrorKind
+{
+    Retryable,
+    Blocking,
+}
+
+public sealed record UserErrorPresentation(
+    string Message,
+    UserErrorKind Kind);
+
 public static class BackendErrorTranslator
 {
     public static BackendApiException FromResponse(HttpStatusCode statusCode, string? reason, string detail)
@@ -30,21 +40,32 @@ public static class BackendErrorTranslator
         return new BackendApiException(ToUserMessage(code, backendMessage), diagnostic, code, statusCode);
     }
 
-    public static string ToUserMessage(Exception exception)
+    public static UserErrorPresentation ToUserError(Exception exception)
     {
-        if (exception is BackendApiException backend) return backend.Message;
+        if (exception is BackendApiException backend)
+        {
+            return new UserErrorPresentation(
+                backend.Message,
+                IsRetryable(backend) ? UserErrorKind.Retryable : UserErrorKind.Blocking);
+        }
         if (exception is TimeoutException || exception is TaskCanceledException)
         {
-            return "The backend operation timed out. Check your internet connection and try again.";
+            return new UserErrorPresentation(
+                "The backend operation timed out. Check your internet connection and try again.",
+                UserErrorKind.Retryable);
         }
         if (exception is HttpRequestException)
         {
-            return "The Myst backend is temporarily unavailable. Wait a moment and try again.";
+            return new UserErrorPresentation(
+                "The Myst backend is temporarily unavailable. Wait a moment and try again.",
+                UserErrorKind.Retryable);
         }
-        return string.IsNullOrWhiteSpace(exception.Message)
-            ? "The operation could not be completed."
-            : exception.Message;
+        return new UserErrorPresentation(
+            "The operation could not be completed safely. Review Browser & diagnostics before trying again.",
+            UserErrorKind.Blocking);
     }
+
+    public static string ToUserMessage(Exception exception) => ToUserError(exception).Message;
 
     public static string? ToActivityMessage(string rawMessage)
     {
@@ -69,6 +90,25 @@ public static class BackendErrorTranslator
 
         // Routine daemon output is intentionally kept out of the user-facing activity feed.
         return null;
+    }
+
+    private static bool IsRetryable(BackendApiException exception)
+    {
+        if (exception.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests ||
+            exception.StatusCode is { } statusCode && (int)statusCode >= 500)
+        {
+            return true;
+        }
+
+        return exception.Code is not null &&
+            (exception.Code.Equals("err_id_unlock", StringComparison.OrdinalIgnoreCase) ||
+             exception.Code.Equals("err_id_import", StringComparison.OrdinalIgnoreCase) ||
+             exception.Code.Equals("err_connection_already_exists", StringComparison.OrdinalIgnoreCase) ||
+             exception.Code.Equals("err_connect", StringComparison.OrdinalIgnoreCase) ||
+             exception.Code.Equals("err_id_registration_in_progress", StringComparison.OrdinalIgnoreCase) ||
+             exception.Code.Equals("err_id_registration_status_check", StringComparison.OrdinalIgnoreCase) ||
+             exception.Code.Equals("err_id_blockchain_registration_check", StringComparison.OrdinalIgnoreCase) ||
+             exception.Code.StartsWith("err_payment", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string ToUserMessage(string? code, string backendMessage)
