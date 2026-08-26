@@ -2,7 +2,7 @@
 param([string]$ReleaseDirectory = (Join-Path (Split-Path $PSScriptRoot -Parent) "release"))
 
 $ErrorActionPreference = "Stop"
-$version = "1.0.3"
+$version = "1.0.4"
 $base = "PrivacyBrowser-$version-windows-x64-portable"
 $zip = Join-Path $ReleaseDirectory "$base.zip"
 $source = Join-Path $ReleaseDirectory "PrivacyBrowser-$version-myst-lmprove-source-227d63b.tar.gz"
@@ -53,7 +53,7 @@ try {
         throw "Portable package must not contain or execute the upstream service-installing backend installer."
     }
     $info = (Get-Item -LiteralPath $exe).VersionInfo
-    if ($info.FileVersion -ne "1.0.3.0" -or -not $info.ProductVersion.StartsWith("1.0.3")) {
+    if ($info.FileVersion -ne "1.0.4.0" -or -not $info.ProductVersion.StartsWith("1.0.4")) {
         throw "Packaged executable version metadata is incorrect."
     }
     Add-Type -AssemblyName System.Drawing

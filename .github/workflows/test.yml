@@ -40,6 +40,9 @@ jobs:
       - name: Validate native architecture invariants
         shell: powershell
         run: .\tests\Test-NativeArchitecture.ps1
+      - name: Validate navigation architecture
+        shell: powershell
+        run: .\tests\Test-NavigationArchitecture.ps1
       - name: Validate backend controls and wallet workflow
         shell: powershell
         run: .\tests\Test-BackendControls.ps1
@@ -68,12 +71,12 @@ jobs:
       - name: Upload native application
         uses: actions/upload-artifact@v4
         with:
-          name: PrivacyBrowser-1.0.3-windows-x64-app
+          name: PrivacyBrowser-1.0.4-windows-x64-app
           path: app/
           if-no-files-found: error
       - name: Upload self-contained QA application
         uses: actions/upload-artifact@v4
         with:
-          name: PrivacyBrowser-1.0.3-windows-x64-self-contained
+          name: PrivacyBrowser-1.0.4-windows-x64-self-contained
           path: qa-app/
           if-no-files-found: error

@@ -7,11 +7,11 @@ function Assert-Equal($Actual, $Expected, [string]$Message) {
     if ($Actual -ne $Expected) { throw "$Message (expected '$Expected', got '$Actual')" }
 }
 
-Assert-Equal $properties.Version "1.0.3" "Application version must be 1.0.3"
-Assert-Equal $properties.PackageVersion "1.0.3" "Package version must be 1.0.3"
-Assert-Equal $properties.AssemblyVersion "1.0.3.0" "Assembly version must be 1.0.3.0"
-Assert-Equal $properties.FileVersion "1.0.3.0" "File version must be 1.0.3.0"
-Assert-Equal $properties.InformationalVersion "1.0.3" "Informational version must be 1.0.3"
+Assert-Equal $properties.Version "1.0.4" "Application version must be 1.0.4"
+Assert-Equal $properties.PackageVersion "1.0.4" "Package version must be 1.0.4"
+Assert-Equal $properties.AssemblyVersion "1.0.4.0" "Assembly version must be 1.0.4.0"
+Assert-Equal $properties.FileVersion "1.0.4.0" "File version must be 1.0.4.0"
+Assert-Equal $properties.InformationalVersion "1.0.4" "Informational version must be 1.0.4"
 Assert-Equal $properties.ApplicationIcon "Assets\AppIcon.ico" "Executable icon declaration is missing"
 
 $assets = Join-Path $root "src\PrivacyBrowser.App\Assets"
@@ -23,19 +23,19 @@ $packageScript = Get-Content (Join-Path $root "Package-Release.ps1") -Raw
 $releaseWorkflow = Get-Content (Join-Path $root ".github\workflows\release-package.yml") -Raw
 $publishWorkflow = Get-Content (Join-Path $root ".github\workflows\publish-release.yml") -Raw
 if (-not $windowXaml.Contains('Icon="Assets/Icons/app-icon-256.png"')) { throw "The WPF window does not use the WPF-compatible official icon." }
-if (-not $manifest.Contains('assemblyIdentity version="1.0.3.0"')) { throw "Manifest version is not 1.0.3.0." }
+if (-not $manifest.Contains('assemblyIdentity version="1.0.4.0"')) { throw "Manifest version is not 1.0.4.0." }
 if (-not $manifest.Contains('name="PrivacyBrowser"')) { throw "Manifest application identity is inconsistent." }
-foreach ($needle in @('$version = "1.0.3"', 'DEPENDENCIES_1.0.3.md', 'SOURCE_OFFER_1.0.3.md')) {
+foreach ($needle in @('$version = "1.0.4"', 'DEPENDENCIES_1.0.4.md', 'SOURCE_OFFER_1.0.4.md')) {
     if (-not $packageScript.Contains($needle)) { throw "Release package version invariant missing: $needle" }
 }
-if (-not $releaseWorkflow.Contains('PrivacyBrowser-1.0.3-release-assets')) {
-    throw "Release-package workflow artifact name is not version 1.0.3."
+if (-not $releaseWorkflow.Contains('PrivacyBrowser-1.0.4-release-assets')) {
+    throw "Release-package workflow artifact name is not version 1.0.4."
 }
-foreach ($needle in @('default: v1.0.3', 'Privacy Browser Prototype Demo v1.0.3',
-        'PrivacyBrowser-1.0.3-SHA256SUMS.txt', 'RELEASE_NOTES_1.0.3.md')) {
+foreach ($needle in @('default: v1.0.4', 'Privacy Browser Prototype Demo v1.0.4',
+        'PrivacyBrowser-1.0.4-SHA256SUMS.txt', 'RELEASE_NOTES_1.0.4.md')) {
     if (-not $publishWorkflow.Contains($needle)) { throw "Publish workflow version invariant missing: $needle" }
 }
-foreach ($file in @('DEPENDENCIES_1.0.3.md', 'SOURCE_OFFER_1.0.3.md', 'RELEASE_NOTES_1.0.3.md')) {
+foreach ($file in @('DEPENDENCIES_1.0.4.md', 'SOURCE_OFFER_1.0.4.md', 'RELEASE_NOTES_1.0.4.md')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "docs\$file") -PathType Leaf)) {
         throw "Release document is missing: $file"
     }
@@ -101,8 +101,8 @@ foreach ($expected in @(16, 20, 24, 32, 40, 48, 64, 128, 256)) {
 $exe = Join-Path $root "app\PrivacyBrowser.exe"
 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Built executable missing: $exe" }
 $version = (Get-Item -LiteralPath $exe).VersionInfo
-Assert-Equal $version.FileVersion "1.0.3.0" "Executable file version is incorrect"
-if (-not $version.ProductVersion.StartsWith("1.0.3")) { throw "Executable product version is incorrect: $($version.ProductVersion)" }
+Assert-Equal $version.FileVersion "1.0.4.0" "Executable file version is incorrect"
+if (-not $version.ProductVersion.StartsWith("1.0.4")) { throw "Executable product version is incorrect: $($version.ProductVersion)" }
 
 Add-Type -AssemblyName System.Drawing
 $embeddedIcon = [Drawing.Icon]::ExtractAssociatedIcon($exe)
@@ -132,4 +132,4 @@ try {
     $embeddedIcon.Dispose()
 }
 
-Write-Host "PASS: version 1.0.3 metadata and WPF-compatible/PE application icons are embedded."
+Write-Host "PASS: version 1.0.4 metadata and WPF-compatible/PE application icons are embedded."

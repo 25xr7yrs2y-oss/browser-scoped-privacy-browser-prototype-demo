@@ -10,7 +10,7 @@ on:
       tag:
         description: Existing release tag
         required: true
-        default: v1.0.3
+        default: v1.0.4
         type: string
 
 permissions:
@@ -28,14 +28,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.run_id }}
-        run: gh run download "$RUN_ID" --name PrivacyBrowser-1.0.3-release-assets --dir release
+        run: gh run download "$RUN_ID" --name PrivacyBrowser-1.0.4-release-assets --dir release
       - name: Confirm expected release files
         run: |
-          test -s release/PrivacyBrowser-1.0.3-windows-x64-portable.zip
-          test -s release/PrivacyBrowser-1.0.3-myst-lmprove-source-227d63b.tar.gz
-          test -s release/PrivacyBrowser-1.0.3-SHA256SUMS.txt
+          test -s release/PrivacyBrowser-1.0.4-windows-x64-portable.zip
+          test -s release/PrivacyBrowser-1.0.4-myst-lmprove-source-227d63b.tar.gz
+          test -s release/PrivacyBrowser-1.0.4-SHA256SUMS.txt
           cd release
-          sha256sum --check PrivacyBrowser-1.0.3-SHA256SUMS.txt
+          sha256sum --check PrivacyBrowser-1.0.4-SHA256SUMS.txt
       - name: Upload assets and publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,7 +43,7 @@ jobs:
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release/* --clobber
-            gh release edit "$TAG" --title "Privacy Browser Prototype Demo v1.0.3" --notes-file docs/RELEASE_NOTES_1.0.3.md --draft=false --prerelease=true
+            gh release edit "$TAG" --title "Privacy Browser Prototype Demo v1.0.4" --notes-file docs/RELEASE_NOTES_1.0.4.md --draft=false --prerelease=true
           else
-            gh release create "$TAG" release/* --verify-tag --title "Privacy Browser Prototype Demo v1.0.3" --notes-file docs/RELEASE_NOTES_1.0.3.md --prerelease
+            gh release create "$TAG" release/* --verify-tag --title "Privacy Browser Prototype Demo v1.0.4" --notes-file docs/RELEASE_NOTES_1.0.4.md --prerelease
           fi

@@ -9,12 +9,12 @@
     <RootNamespace>PrivacyBrowser.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <Version>1.0.3</Version>
-    <VersionPrefix>1.0.3</VersionPrefix>
-    <PackageVersion>1.0.3</PackageVersion>
-    <AssemblyVersion>1.0.3.0</AssemblyVersion>
-    <FileVersion>1.0.3.0</FileVersion>
-    <InformationalVersion>1.0.3</InformationalVersion>
+    <Version>1.0.4</Version>
+    <VersionPrefix>1.0.4</VersionPrefix>
+    <PackageVersion>1.0.4</PackageVersion>
+    <AssemblyVersion>1.0.4.0</AssemblyVersion>
+    <FileVersion>1.0.4.0</FileVersion>
+    <InformationalVersion>1.0.4</InformationalVersion>
     <Product>Privacy Browser</Product>
     <AssemblyTitle>Privacy Browser</AssemblyTitle>
     <Description>Native browser-scoped privacy controller for Windows.</Description>
