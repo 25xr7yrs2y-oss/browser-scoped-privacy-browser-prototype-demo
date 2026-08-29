@@ -9,6 +9,25 @@ using System.Text.Json.Serialization;
 
 namespace PrivacyBrowser.App;
 
+internal sealed record BackendTimeouts(
+    TimeSpan HealthProbe,
+    TimeSpan Ordinary,
+    TimeSpan ProviderDiscovery,
+    TimeSpan ProviderConnect,
+    TimeSpan GracefulStop,
+    TimeSpan Readiness,
+    TimeSpan ReadinessPollInterval)
+{
+    public static BackendTimeouts Default { get; } = new(
+        TimeSpan.FromSeconds(2),
+        TimeSpan.FromSeconds(15),
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(75),
+        TimeSpan.FromSeconds(8),
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(1));
+}
+
 public sealed class BackendController : IAsyncDisposable
 {
     public const int ControlPort = 44050;
@@ -21,23 +40,46 @@ public sealed class BackendController : IAsyncDisposable
 
     private readonly AppOptions _options;
     private readonly HttpClient _client;
+    private readonly BackendTimeouts _timeouts;
+    private readonly TimeProvider _timeProvider;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly Func<bool>? _connectedStateVerifier;
     private Process? _process;
     private bool _stopping;
+    private bool _connectOutcomeIndeterminate;
 
     public BackendController(AppOptions options)
+        : this(options, new SocketsHttpHandler { UseProxy = false }, BackendTimeouts.Default)
+    {
+    }
+
+    internal BackendController(
+        AppOptions options,
+        HttpMessageHandler handler,
+        BackendTimeouts timeouts,
+        TimeProvider? timeProvider = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        Func<bool>? connectedStateVerifier = null)
     {
         _options = options;
-        _client = new HttpClient(new SocketsHttpHandler { UseProxy = false })
+        _timeouts = timeouts;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _delay = delay ?? ((duration, token) => Task.Delay(duration, _timeProvider, token));
+        _connectedStateVerifier = connectedStateVerifier;
+        _client = new HttpClient(handler)
         {
             BaseAddress = new Uri($"http://127.0.0.1:{ControlPort}/"),
-            Timeout = TimeSpan.FromSeconds(15),
+            Timeout = Timeout.InfiniteTimeSpan,
         };
     }
 
     public event Action<string>? Log;
     public event Action<BackendLifecycleState>? LifecycleChanged;
     public int? OwnedProcessId => _process?.Id;
+    public bool IsConnectOutcomeIndeterminate => _connectOutcomeIndeterminate;
     public BackendLifecycleState LifecycleState { get; private set; } = BackendLifecycleState.Stopped;
+
+    internal TimeSpan ClientTimeoutForTesting => _client.Timeout;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -135,9 +177,17 @@ public sealed class BackendController : IAsyncDisposable
 
         // These resources have different upstream dependencies. Capture each result
         // independently so a slow registration RPC cannot make the whole UI appear offline.
-        var connectionTask = CaptureAsync("connection", () => GetAsync<ConnectionInfo>("connection", cancellationToken), cancellationToken);
-        var identitiesTask = CaptureAsync("identity", () => GetAsync<IdentityList>("identities", cancellationToken), cancellationToken);
-        var termsTask = CaptureAsync("terms", () => GetAsync<TermsStatus>("terms", cancellationToken), cancellationToken);
+        var connectionTask = CaptureAsync("connection", async () =>
+        {
+            var connection = await GetAsync<ConnectionInfo>(
+                BackendOperation.ConnectionStatus, "connection", "connection", _timeouts.Ordinary, cancellationToken);
+            ObserveConnectionState(connection);
+            return connection;
+        }, cancellationToken);
+        var identitiesTask = CaptureAsync("identity", () => GetAsync<IdentityList>(
+            BackendOperation.IdentityList, "identities", "identities", _timeouts.Ordinary, cancellationToken), cancellationToken);
+        var termsTask = CaptureAsync("terms", () => GetAsync<TermsStatus>(
+            BackendOperation.TermsStatus, "terms", "terms", _timeouts.Ordinary, cancellationToken), cancellationToken);
         await Task.WhenAll(connectionTask, identitiesTask, termsTask);
 
         var issues = new List<BackendIssue>();
@@ -152,7 +202,8 @@ public sealed class BackendController : IAsyncDisposable
             .Select(group => group.First())
             .ToArray() ?? [];
         var detailTasks = references.Select(reference => CaptureAsync("identity status",
-            () => GetAsync<IdentityDetails>($"identities/{Uri.EscapeDataString(reference.Id)}", cancellationToken),
+            () => GetAsync<IdentityDetails>(BackendOperation.IdentityStatus, "identities/{identity}",
+                $"identities/{Uri.EscapeDataString(reference.Id)}", _timeouts.Ordinary, cancellationToken),
             cancellationToken)).ToArray();
         await Task.WhenAll(detailTasks);
         for (var index = 0; index < detailTasks.Length; index++)
@@ -183,7 +234,8 @@ public sealed class BackendController : IAsyncDisposable
 
     public async Task<IReadOnlyList<ProviderProposal>> GetProvidersAsync(CancellationToken cancellationToken = default)
     {
-        var result = await GetAsync<ProposalList>("proposals?service_type=wireguard&access_policy=all", cancellationToken);
+        var result = await GetAsync<ProposalList>(BackendOperation.ProviderDiscovery, "proposals",
+            "proposals?service_type=wireguard&access_policy=all", _timeouts.ProviderDiscovery, cancellationToken);
         return result.Proposals
             .Where(p => !string.IsNullOrWhiteSpace(p.ProviderId) &&
                         p.ServiceType.Equals("wireguard", StringComparison.OrdinalIgnoreCase))
@@ -199,7 +251,8 @@ public sealed class BackendController : IAsyncDisposable
     public Task<IdentityReference> CreateIdentityAsync(string passphrase, CancellationToken cancellationToken = default)
     {
         ValidatePassphrase(passphrase);
-        return SendAsync<IdentityReference>(HttpMethod.Post, "identities", new { passphrase }, cancellationToken);
+        return SendAsync<IdentityReference>(BackendOperation.IdentityCreate, HttpMethod.Post,
+            "identities", "identities", new { passphrase }, _timeouts.Ordinary, cancellationToken);
     }
 
     public async Task<IdentityReference> ImportIdentityAsync(
@@ -209,25 +262,28 @@ public sealed class BackendController : IAsyncDisposable
     {
         if (encryptedKey.Length == 0) throw new InvalidOperationException("The selected identity file is empty.");
         ValidatePassphrase(currentPassphrase);
-        return await SendAsync<IdentityReference>(HttpMethod.Post, "identities-import", new
+        return await SendAsync<IdentityReference>(BackendOperation.IdentityImport, HttpMethod.Post,
+            "identities-import", "identities-import", new
         {
             data = encryptedKey,
             current_passphrase = currentPassphrase,
             new_passphrase = currentPassphrase,
             set_default = true,
-        }, cancellationToken);
+        }, _timeouts.Ordinary, cancellationToken);
     }
 
     public Task UnlockIdentityAsync(string id, string passphrase, CancellationToken cancellationToken = default)
     {
         ValidatePassphrase(passphrase);
-        return SendAsync(HttpMethod.Put, $"identities/{Uri.EscapeDataString(id)}/unlock", new { passphrase }, cancellationToken);
+        return SendAsync(BackendOperation.IdentityUnlock, HttpMethod.Put, "identities/{identity}/unlock",
+            $"identities/{Uri.EscapeDataString(id)}/unlock", new { passphrase }, _timeouts.Ordinary, cancellationToken);
     }
 
     public async Task RegisterIdentityAsync(string id, string passphrase, CancellationToken cancellationToken = default)
     {
         await UnlockIdentityAsync(id, passphrase, cancellationToken);
-        await SendAsync(HttpMethod.Post, $"identities/{Uri.EscapeDataString(id)}/register", new { }, cancellationToken);
+        await SendAsync(BackendOperation.IdentityRegistration, HttpMethod.Post, "identities/{identity}/register",
+            $"identities/{Uri.EscapeDataString(id)}/register", new { }, _timeouts.Ordinary, cancellationToken);
     }
 
     public Task AcceptConsumerTermsAsync(string currentVersion, CancellationToken cancellationToken = default)
@@ -236,22 +292,25 @@ public sealed class BackendController : IAsyncDisposable
         {
             throw new InvalidOperationException("The backend did not report a current terms version.");
         }
-        return SendAsync(HttpMethod.Post, "terms", new
+        return SendAsync(BackendOperation.TermsAcceptance, HttpMethod.Post, "terms", "terms", new
         {
             agreed_consumer = true,
             agreed_version = currentVersion,
-        }, cancellationToken);
+        }, _timeouts.Ordinary, cancellationToken);
     }
 
     public async Task<BalanceStatus> RefreshBalanceAsync(string identityId, CancellationToken cancellationToken = default)
     {
-        return await SendAsync<BalanceStatus>(HttpMethod.Put,
-            $"identities/{Uri.EscapeDataString(identityId)}/balance/refresh", null, cancellationToken);
+        return await SendAsync<BalanceStatus>(BackendOperation.BalanceRefresh, HttpMethod.Put,
+            "identities/{identity}/balance/refresh",
+            $"identities/{Uri.EscapeDataString(identityId)}/balance/refresh", null, _timeouts.Ordinary, cancellationToken);
     }
 
     public async Task<IReadOnlyList<PaymentGateway>> GetPaymentGatewaysAsync(CancellationToken cancellationToken = default)
     {
-        var gateways = await GetAsync<List<PaymentGateway>>("v2/payment-order-gateways?options_currency=MYST", cancellationToken);
+        var gateways = await GetAsync<List<PaymentGateway>>(BackendOperation.PaymentGatewayDiscovery,
+            "v2/payment-order-gateways", "v2/payment-order-gateways?options_currency=MYST",
+            _timeouts.Ordinary, cancellationToken);
         return gateways
             .Where(g => PaymentTargetParser.SupportsGateway(g.Name) && g.Currencies.Count > 0)
             .ToArray();
@@ -286,7 +345,8 @@ public sealed class BackendController : IAsyncDisposable
             throw new InvalidOperationException("State must be a two-letter code or left blank.");
         }
 
-        return await SendAsync<PaymentOrder>(HttpMethod.Post,
+        return await SendAsync<PaymentOrder>(BackendOperation.PaymentOrderCreate, HttpMethod.Post,
+            "v2/identities/{identity}/{gateway}/payment-order",
             $"v2/identities/{Uri.EscapeDataString(identityId)}/{Uri.EscapeDataString(gateway.Name)}/payment-order",
             new
             {
@@ -295,7 +355,7 @@ public sealed class BackendController : IAsyncDisposable
                 country = country.ToUpperInvariant(),
                 state = state.ToUpperInvariant(),
                 gateway_caller_data = new { },
-            }, cancellationToken);
+            }, _timeouts.Ordinary, cancellationToken);
     }
 
     public async Task ConnectAsync(
@@ -304,26 +364,75 @@ public sealed class BackendController : IAsyncDisposable
         ProviderProposal provider,
         CancellationToken cancellationToken = default)
     {
-        await UnlockIdentityAsync(identityId, passphrase, cancellationToken);
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(75));
-        await SendAsync(HttpMethod.Put, "connection", new
+        if (_connectOutcomeIndeterminate)
         {
-            consumer_id = identityId,
-            provider_id = provider.ProviderId,
-            service_type = string.IsNullOrWhiteSpace(provider.ServiceType) ? "wireguard" : provider.ServiceType,
-            filter = new { include_monitoring_failed = true },
-            connect_options = new
+            var priorState = await GetConnectionStateAsync(cancellationToken);
+            ResolveIndeterminateConnect(priorState, priorAttempt: true);
+            return;
+        }
+
+        await UnlockIdentityAsync(identityId, passphrase, cancellationToken);
+        try
+        {
+            await SendAsync(BackendOperation.ProviderConnect, HttpMethod.Put, "connection", "connection", new
             {
-                dns = "provider",
-                kill_switch = true,
-                proxy_port = ProxyPort,
-            },
-        }, timeout.Token);
+                consumer_id = identityId,
+                provider_id = provider.ProviderId,
+                service_type = string.IsNullOrWhiteSpace(provider.ServiceType) ? "wireguard" : provider.ServiceType,
+                filter = new { include_monitoring_failed = true },
+                connect_options = new
+                {
+                    dns = "provider",
+                    kill_switch = true,
+                    proxy_port = ProxyPort,
+                },
+            }, _timeouts.ProviderConnect, cancellationToken);
+            _connectOutcomeIndeterminate = false;
+        }
+        catch (BackendOperationTimeoutException)
+        {
+            _connectOutcomeIndeterminate = true;
+            ConnectionInfo state;
+            try
+            {
+                state = await GetConnectionStateAsync(cancellationToken);
+            }
+            catch (BackendCallerCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // The PUT outcome remains unknown. The next Connect attempt must reconcile
+                // through GET /connection before another state-changing request is allowed.
+                throw new BackendConnectionStateException(
+                    "Provider connection reached its deadline and the backend state could not be reconciled. " +
+                    "Refresh connection status before trying again.", "UNAVAILABLE");
+            }
+            ResolveIndeterminateConnect(state, priorAttempt: false);
+        }
+        catch (BackendCallerCanceledException)
+        {
+            // Cancellation can race with the backend accepting the request. Require
+            // a state reconciliation before any later Connect attempt.
+            _connectOutcomeIndeterminate = true;
+            throw;
+        }
+        catch (HttpRequestException)
+        {
+            // A loopback transport failure does not prove that the backend rejected
+            // the already-sent PUT, so fail closed against a duplicate attempt.
+            _connectOutcomeIndeterminate = true;
+            throw;
+        }
     }
 
-    public Task DisconnectAsync(CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Delete, "connection", null, cancellationToken);
+    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    {
+        await SendAsync(BackendOperation.ProviderDisconnect, HttpMethod.Delete, "connection", "connection", null,
+            _timeouts.Ordinary, cancellationToken);
+        _connectOutcomeIndeterminate = false;
+    }
 
     public bool IsOwnedProxyListening()
     {
@@ -357,8 +466,8 @@ public sealed class BackendController : IAsyncDisposable
 
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-            await SendAsync(HttpMethod.Post, "stop", null, timeout.Token);
+            await SendAsync(BackendOperation.GracefulStop, HttpMethod.Post, "stop", "stop", null,
+                _timeouts.GracefulStop, CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -380,6 +489,7 @@ public sealed class BackendController : IAsyncDisposable
         {
             _process.Dispose();
             _process = null;
+            _connectOutcomeIndeterminate = false;
             _stopping = false;
             SetLifecycle(BackendLifecycleState.Stopped);
         }
@@ -391,76 +501,256 @@ public sealed class BackendController : IAsyncDisposable
         _client.Dispose();
     }
 
-    private async Task WaitUntilReadyAsync(CancellationToken cancellationToken)
+    internal async Task WaitUntilReadyAsync(CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < 30; attempt++)
+        var started = _timeProvider.GetTimestamp();
+        while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (_process is { HasExited: true })
             {
                 throw new InvalidOperationException($"The Myst backend exited before it became ready (exit code {_process.ExitCode}).");
             }
-            if (await IsHealthyAsync(cancellationToken))
+
+            var elapsed = _timeProvider.GetElapsedTime(started);
+            var remaining = _timeouts.Readiness - elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                throw new BackendOperationTimeoutException(
+                    BackendOperation.BackendReadiness, _timeouts.Readiness, elapsed);
+            }
+
+            if (await IsHealthyAsync(cancellationToken, Min(_timeouts.HealthProbe, remaining)))
             {
                 Log?.Invoke("Myst backend control endpoint is ready on loopback port 44050.");
                 return;
             }
-            await Task.Delay(1000, cancellationToken);
+
+            elapsed = _timeProvider.GetElapsedTime(started);
+            remaining = _timeouts.Readiness - elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                throw new BackendOperationTimeoutException(
+                    BackendOperation.BackendReadiness, _timeouts.Readiness, elapsed);
+            }
+            await _delay(Min(_timeouts.ReadinessPollInterval, remaining), cancellationToken);
         }
-        throw new TimeoutException("The Myst backend did not become ready within 30 seconds.");
     }
 
-    private async Task<bool> IsHealthyAsync(CancellationToken cancellationToken)
+    private Task<bool> IsHealthyAsync(CancellationToken cancellationToken) =>
+        IsHealthyAsync(cancellationToken, _timeouts.HealthProbe);
+
+    private async Task<bool> IsHealthyAsync(CancellationToken cancellationToken, TimeSpan timeout)
     {
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromMilliseconds(1500));
-            using var response = await _client.GetAsync("healthcheck", timeout.Token);
+            using var response = await SendCoreAsync(BackendOperation.BackendReadiness, HttpMethod.Get,
+                "healthcheck", "healthcheck", null, timeout, cancellationToken);
             return response.IsSuccessStatusCode;
         }
         catch (HttpRequestException) { return false; }
-        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested) { return false; }
+        catch (BackendOperationTimeoutException) { return false; }
     }
 
-    private async Task<T> GetAsync<T>(string path, CancellationToken cancellationToken)
+    private async Task<T> GetAsync<T>(
+        BackendOperation operation,
+        string routeTemplate,
+        string path,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
-        using var response = await _client.GetAsync(path, cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken)
-            ?? throw new InvalidOperationException($"Backend returned an empty response for {path}.");
+        using var response = await SendCoreAsync(
+            operation, HttpMethod.Get, routeTemplate, path, null, timeout, cancellationToken);
+        await EnsureSuccessAsync(operation, response, cancellationToken);
+        return await ReadResponseAsync<T>(operation, response, cancellationToken);
     }
 
-    private async Task SendAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
+    private async Task SendAsync(
+        BackendOperation operation,
+        HttpMethod method,
+        string routeTemplate,
+        string path,
+        object? body,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
-        using var response = await SendCoreAsync(method, path, body, cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
+        using var response = await SendCoreAsync(
+            operation, method, routeTemplate, path, body, timeout, cancellationToken);
+        await EnsureSuccessAsync(operation, response, cancellationToken);
     }
 
-    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
+    private async Task<T> SendAsync<T>(
+        BackendOperation operation,
+        HttpMethod method,
+        string routeTemplate,
+        string path,
+        object? body,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
-        using var response = await SendCoreAsync(method, path, body, cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken)
-            ?? throw new InvalidOperationException($"Backend returned an empty response for {path}.");
+        using var response = await SendCoreAsync(
+            operation, method, routeTemplate, path, body, timeout, cancellationToken);
+        await EnsureSuccessAsync(operation, response, cancellationToken);
+        return await ReadResponseAsync<T>(operation, response, cancellationToken);
     }
 
-    private async Task<HttpResponseMessage> SendCoreAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SendCoreAsync(
+        BackendOperation operation,
+        HttpMethod method,
+        string routeTemplate,
+        string path,
+        object? body,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(method, path);
         if (body is not null)
         {
             request.Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json");
         }
-        return await _client.SendAsync(request, cancellationToken);
+
+        var started = _timeProvider.GetTimestamp();
+        using var deadline = new CancellationTokenSource(timeout, _timeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        try
+        {
+            return await _client.SendAsync(request, linked.Token);
+        }
+        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
+        {
+            LogDiagnostic(operation, method, routeTemplate, timeout, started, "caller-canceled", ex);
+            throw new BackendCallerCanceledException(operation, ex, cancellationToken);
+        }
+        catch (OperationCanceledException ex) when (deadline.IsCancellationRequested)
+        {
+            var elapsed = _timeProvider.GetElapsedTime(started);
+            LogDiagnostic(operation, method, routeTemplate, timeout, started, "deadline-expired", ex);
+            throw new BackendOperationTimeoutException(operation, timeout, elapsed, ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            LogDiagnostic(operation, method, routeTemplate, timeout, started, "transport-error", ex);
+            throw;
+        }
     }
 
-    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task EnsureSuccessAsync(
+        BackendOperation operation,
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode) return;
         var detail = await response.Content.ReadAsStringAsync(cancellationToken);
-        throw BackendErrorTranslator.FromResponse(response.StatusCode, response.ReasonPhrase, detail);
+        throw BackendErrorTranslator.FromResponse(operation, response.StatusCode, response.ReasonPhrase, detail);
     }
+
+    private static async Task<T> ReadResponseAsync<T>(
+        BackendOperation operation,
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken)
+                ?? throw new BackendMalformedResponseException(operation);
+        }
+        catch (JsonException ex)
+        {
+            throw new BackendMalformedResponseException(operation, ex);
+        }
+        catch (NotSupportedException ex)
+        {
+            throw new BackendMalformedResponseException(operation, ex);
+        }
+    }
+
+    private async Task<ConnectionInfo> GetConnectionStateAsync(CancellationToken cancellationToken)
+    {
+        var connection = await GetAsync<ConnectionInfo>(BackendOperation.ConnectionStatus,
+            "connection", "connection", _timeouts.Ordinary, cancellationToken);
+        ObserveConnectionState(connection);
+        return connection;
+    }
+
+    private void ResolveIndeterminateConnect(ConnectionInfo state, bool priorAttempt)
+    {
+        var normalized = NormalizeConnectionState(state.Status);
+        if (normalized == "CONNECTING")
+        {
+            _connectOutcomeIndeterminate = true;
+            throw new BackendConnectionStateException(
+                "The backend is still connecting to the provider. Wait for connection status to settle before trying again.",
+                normalized);
+        }
+
+        if (normalized == "CONNECTED")
+        {
+            // Keep retries blocked until both backend state and the app-owned
+            // loopback proxy have been verified. A retry that observes this state
+            // returns successfully instead of issuing another PUT /connection.
+            _connectOutcomeIndeterminate = true;
+            var verified = _connectedStateVerifier?.Invoke() ?? IsOwnedProxyListening();
+            if (!verified)
+            {
+                throw new BackendConnectionStateException(
+                    "The backend reports a provider connection, but the app-owned loopback proxy is not ready. " +
+                    "Browser launch remains blocked; refresh status or disconnect safely.", normalized);
+            }
+            _connectOutcomeIndeterminate = false;
+            return;
+        }
+
+        _connectOutcomeIndeterminate = false;
+        var prefix = priorAttempt
+            ? "The previous provider connection attempt has finished"
+            : "Provider connection reached its deadline";
+        throw new BackendConnectionStateException(
+            $"{prefix}; the reconciled backend state is {DisplayConnectionState(normalized)}. " +
+            "Refresh providers before starting a new attempt.", normalized);
+    }
+
+    private void ObserveConnectionState(ConnectionInfo state)
+    {
+        if (_connectOutcomeIndeterminate &&
+            !state.Status.Equals("CONNECTING", StringComparison.OrdinalIgnoreCase) &&
+            !state.Status.Equals("CONNECTED", StringComparison.OrdinalIgnoreCase))
+        {
+            _connectOutcomeIndeterminate = false;
+        }
+    }
+
+    private void LogDiagnostic(
+        BackendOperation operation,
+        HttpMethod method,
+        string routeTemplate,
+        TimeSpan timeout,
+        long started,
+        string outcome,
+        Exception exception)
+    {
+        var elapsed = _timeProvider.GetElapsedTime(started);
+        Log?.Invoke($"Backend request: operation={operation}; method={method.Method}; route={routeTemplate}; " +
+            $"budget_ms={timeout.TotalMilliseconds:0}; elapsed_ms={elapsed.TotalMilliseconds:0}; " +
+            $"outcome={outcome}; exception={exception.GetType().Name}.");
+    }
+
+    private static string NormalizeConnectionState(string? state)
+    {
+        if (string.IsNullOrWhiteSpace(state)) return "UNKNOWN";
+        var normalized = new string(state.Where(character => char.IsAsciiLetterOrDigit(character) || character == '_')
+            .Take(40).ToArray()).ToUpperInvariant();
+        return string.IsNullOrWhiteSpace(normalized) ? "UNKNOWN" : normalized;
+    }
+
+    private static string DisplayConnectionState(string state) => state switch
+    {
+        "NOTCONNECTED" or "NOT_CONNECTED" => "not connected",
+        "DISCONNECTED" => "disconnected",
+        "FAILED" => "failed",
+        _ => "not connected",
+    };
+
+    private static TimeSpan Min(TimeSpan left, TimeSpan right) => left <= right ? left : right;
 
     private static async Task<ApiResult<T>> CaptureAsync<T>(
         string area,

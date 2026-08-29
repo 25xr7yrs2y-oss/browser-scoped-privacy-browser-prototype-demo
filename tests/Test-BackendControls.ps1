@@ -36,6 +36,23 @@ foreach ($needle in @('err_id_not_registered', 'err_payment', 'status=[Unregiste
     if (-not $errors.Contains($needle)) { throw "User-facing backend error translation missing: $needle" }
 }
 
+foreach ($needle in @(
+        'Timeout = Timeout.InfiniteTimeSpan',
+        'TimeSpan.FromSeconds(2)',
+        'TimeSpan.FromSeconds(15)',
+        'TimeSpan.FromSeconds(30)',
+        'TimeSpan.FromSeconds(75)',
+        'TimeSpan.FromSeconds(8)',
+        'BackendOperation.ProviderDiscovery',
+        'BackendOperation.ProviderConnect',
+        'GetConnectionStateAsync(cancellationToken)',
+        'IsConnectOutcomeIndeterminate')) {
+    if (-not $backend.Contains($needle)) { throw "Explicit backend deadline/reconciliation invariant missing: $needle" }
+}
+if ($backend.Contains('Timeout = TimeSpan.FromSeconds(15)') -or $backend.Contains('CancelAfter(TimeSpan.FromSeconds(75))')) {
+    throw "A shared or competing timeout can still preempt an operation-specific deadline"
+}
+
 foreach ($needle in @('x:Name="WalletBalanceText"', 'x:Name="TopUpButton"', 'x:Name="ProviderCountText"',
         'x:Name="OperationStatusBorder"', 'x:Name="ConnectionPrerequisiteText"')) {
     if (-not $window.Contains($needle)) { throw "Required native controls UI element missing: $needle" }

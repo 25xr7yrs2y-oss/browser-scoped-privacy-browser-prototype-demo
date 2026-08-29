@@ -1,15 +1,17 @@
 # Privacy Browser
 
-Version 1.0.4 is a Windows x64 testing release combining a native .NET/WPF control application,
+Version 1.0.5 is a Windows x64 testing release combining a native .NET/WPF control application,
 an unpacked Mullvad Browser, and the `custom-proxy-build` Myst node from
 `myst-lmprove`. It does not modify the Windows system proxy, DNS servers,
 firewall, or route table.
 
 ## Status
 
-The native integration and portable release packaging are implemented. Version 1.0.4 adds hardened payment-target
-parsing, focused in-window navigation, and contextual operation feedback on top of the identity, readiness, backend,
-browser-process, and bundle-integrity work in version 1.0.3. Packet capture confirms browser payload
+The native integration and portable release packaging are implemented. Version 1.0.5 replaces the conflicting shared
+HTTP timeout with explicit deadlines for readiness, ordinary TequilAPI work, provider discovery, provider connection,
+and graceful stop. It also reconciles connection state after an indeterminate provider-connect deadline before another
+PUT can be issued. The payment-target, navigation, identity, readiness, browser-process, and bundle-integrity hardening
+from earlier versions remains in place. Packet capture confirms browser payload
 routing through the loopback backend and a Mysterium provider, no direct
 browser TCP/DNS/UDP path, fail-closed behavior before launch and after backend
 termination, and unaffected external `curl`/PowerShell traffic. Code signing,
@@ -82,7 +84,7 @@ This publishes the WPF app to `app\PrivacyBrowser.exe`. Use
 `-SelfContained` if the target machine does not have the .NET 8 Desktop Runtime.
 
 The executable embeds the official multi-resolution Windows icon and reports
-file/product version `1.0.4`. The native WPF window uses the matching embedded
+file/product version `1.0.5`. The native WPF window uses the matching embedded
 PNG resource so Windows Imaging Component can decode it reliably at startup.
 
 ## Release package
@@ -95,7 +97,7 @@ $env:MYST_RELEASE_TOKEN = "<token with read access to the pinned backend release
 .\tests\Test-ReleasePackage.ps1
 ```
 
-This creates `PrivacyBrowser-1.0.4-windows-x64-portable.zip`, its SHA-256
+This creates `PrivacyBrowser-1.0.5-windows-x64-portable.zip`, its SHA-256
 manifest, and the corresponding `myst-lmprove` source archive. The upstream
 installers are downloaded at pinned hashes and extracted; they are never run.
 
@@ -152,6 +154,9 @@ an unrelated policy file. The policy affects only this browser tree.
 .\tests\Test-Configuration.ps1
 .\tests\Test-Launcher.ps1
 .\tests\Test-NativeArchitecture.ps1
+.\tests\Test-NavigationArchitecture.ps1
+.\tests\Test-BackendControls.ps1
+dotnet run --project .\tests\PrivacyBrowser.BackendController.Tests\PrivacyBrowser.BackendController.Tests.csproj --configuration Release
 .\tests\Test-ProductHardening.ps1
 .\tests\Test-ReleaseMetadata.ps1
 .\tests\Test-Evidence.ps1

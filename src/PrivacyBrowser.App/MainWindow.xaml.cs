@@ -32,7 +32,7 @@ public partial class MainWindow : Window
         _options = options;
         _stateStore = new UserStateStore(options.BundleRoot);
         _selectedIdentityId = _stateStore.LoadSelectedIdentityId();
-        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.4";
+        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.5";
         Title = $"Privacy Browser {version}";
         _backend = new BackendController(options);
         _browser = new BrowserLauncher(options, _backend);
@@ -499,6 +499,14 @@ public partial class MainWindow : Window
             MainBackendText.Text = "Online";
             MainBackendDetailText.Text = "Myst control is ready";
         }
+        else if (_snapshot.IsConnecting || _backend.IsConnectOutcomeIndeterminate)
+        {
+            ConnectionStatusText.Text = "Connecting";
+            ConnectionDetailText.Text = "The backend is still negotiating with the provider. Wait for status to settle before trying again.";
+            ConnectionStatusDot.Fill = Brush("Warning");
+            MainBackendText.Text = "Connecting";
+            MainBackendDetailText.Text = "Provider negotiation in progress";
+        }
         else if (statusUnavailable)
         {
             ConnectionStatusText.Text = "Status unavailable";
@@ -623,7 +631,8 @@ public partial class MainWindow : Window
         TopUpButton.IsEnabled = available && paymentEligible;
         RefreshProvidersButton.IsEnabled = available;
         ProviderComboBox.IsEnabled = available && !_snapshot.IsConnected;
-        ConnectButton.IsEnabled = available && termsAccepted && registrationReady && hasProvider && !_snapshot.IsConnected;
+        ConnectButton.IsEnabled = available && termsAccepted && registrationReady && hasProvider &&
+            !_snapshot.IsConnected && !_snapshot.IsConnecting && !_backend.IsConnectOutcomeIndeterminate;
         DisconnectButton.IsEnabled = !_feedbackStore.IsBusy && _snapshot.IsConnected;
         LaunchBrowserButton.IsEnabled = !_feedbackStore.IsBusy && _browserReadiness.CanLaunch;
         RestartBackendButton.IsEnabled = !_feedbackStore.IsBusy && _bundleValidated &&
@@ -637,6 +646,8 @@ public partial class MainWindow : Window
     {
         if (!_snapshot.NodeUp) return "Backend is offline.";
         if (_snapshot.IsConnected) return "Connected. Disconnect before changing provider.";
+        if (_snapshot.IsConnecting || _backend.IsConnectOutcomeIndeterminate)
+            return "A provider connection attempt is still being reconciled. Wait for status to settle.";
         if (!termsAccepted) return "Accept the consumer terms before connecting.";
         if (!hasIdentity) return "Create an identity before connecting.";
         if (!registrationReady) return "Register the identity before connecting.";

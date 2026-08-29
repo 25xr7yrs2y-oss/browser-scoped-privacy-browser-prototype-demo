@@ -4,6 +4,107 @@ using System.Text.Json;
 
 namespace PrivacyBrowser.App;
 
+public enum BackendOperation
+{
+    BackendReadiness,
+    ConnectionStatus,
+    IdentityList,
+    IdentityStatus,
+    TermsStatus,
+    ProviderDiscovery,
+    IdentityCreate,
+    IdentityImport,
+    IdentityUnlock,
+    IdentityRegistration,
+    TermsAcceptance,
+    BalanceRefresh,
+    PaymentGatewayDiscovery,
+    PaymentOrderCreate,
+    ProviderConnect,
+    ProviderDisconnect,
+    GracefulStop,
+}
+
+public static class BackendOperationNames
+{
+    public static string Label(BackendOperation operation) => operation switch
+    {
+        BackendOperation.BackendReadiness => "Backend readiness",
+        BackendOperation.ConnectionStatus => "Connection status",
+        BackendOperation.IdentityList => "Identity list",
+        BackendOperation.IdentityStatus => "Identity status",
+        BackendOperation.TermsStatus => "Terms status",
+        BackendOperation.ProviderDiscovery => "Provider discovery",
+        BackendOperation.IdentityCreate => "Identity creation",
+        BackendOperation.IdentityImport => "Identity import",
+        BackendOperation.IdentityUnlock => "Identity unlock",
+        BackendOperation.IdentityRegistration => "Identity registration",
+        BackendOperation.TermsAcceptance => "Terms acceptance",
+        BackendOperation.BalanceRefresh => "Balance refresh",
+        BackendOperation.PaymentGatewayDiscovery => "Payment gateway discovery",
+        BackendOperation.PaymentOrderCreate => "Payment order creation",
+        BackendOperation.ProviderConnect => "Provider connection",
+        BackendOperation.ProviderDisconnect => "Provider disconnect",
+        BackendOperation.GracefulStop => "Graceful backend stop",
+        _ => "Backend operation",
+    };
+}
+
+public sealed class BackendOperationTimeoutException : TimeoutException
+{
+    public BackendOperationTimeoutException(
+        BackendOperation operation,
+        TimeSpan budget,
+        TimeSpan elapsed,
+        Exception? innerException = null)
+        : base($"{BackendOperationNames.Label(operation)} exceeded its {budget.TotalSeconds:0.###}-second deadline.", innerException)
+    {
+        Operation = operation;
+        Budget = budget;
+        Elapsed = elapsed;
+    }
+
+    public BackendOperation Operation { get; }
+    public TimeSpan Budget { get; }
+    public TimeSpan Elapsed { get; }
+}
+
+public sealed class BackendCallerCanceledException : OperationCanceledException
+{
+    public BackendCallerCanceledException(
+        BackendOperation operation,
+        Exception innerException,
+        CancellationToken cancellationToken)
+        : base($"{BackendOperationNames.Label(operation)} was canceled by its caller.", innerException, cancellationToken)
+    {
+        Operation = operation;
+    }
+
+    public BackendOperation Operation { get; }
+}
+
+public sealed class BackendMalformedResponseException : InvalidOperationException
+{
+    public BackendMalformedResponseException(BackendOperation operation, Exception? innerException = null)
+        : base($"{BackendOperationNames.Label(operation)} returned a malformed response.", innerException)
+    {
+        Operation = operation;
+    }
+
+    public BackendOperation Operation { get; }
+}
+
+public sealed class BackendConnectionStateException : InvalidOperationException
+{
+    public BackendConnectionStateException(string userMessage, string sanitizedState)
+        : base(userMessage)
+    {
+        SanitizedState = sanitizedState;
+    }
+
+    public string SanitizedState { get; }
+}
+
 public sealed class BackendApiException : InvalidOperationException
 {
     public BackendApiException(string userMessage, string diagnosticMessage, string? code, HttpStatusCode? statusCode)
@@ -31,14 +132,22 @@ public sealed record UserErrorPresentation(
 
 public static class BackendErrorTranslator
 {
-    public static BackendApiException FromResponse(HttpStatusCode statusCode, string? reason, string detail)
+    public static BackendApiException FromResponse(
+        BackendOperation operation,
+        HttpStatusCode statusCode,
+        string? reason,
+        string detail)
     {
         var code = FindJsonString(detail, "code");
         var backendMessage = FindJsonString(detail, "message") ?? FindJsonString(detail, "detail") ?? detail;
-        var diagnostic = $"Backend request failed ({(int)statusCode} {reason})" +
-            (string.IsNullOrWhiteSpace(detail) ? "." : $": {Limit(detail, 800)}");
+        var safeCode = SafeSupportCode(code);
+        var diagnostic = $"{BackendOperationNames.Label(operation)} failed with HTTP {(int)statusCode}" +
+            (safeCode is null ? "." : $" (support code: {safeCode}).");
         return new BackendApiException(ToUserMessage(code, backendMessage), diagnostic, code, statusCode);
     }
+
+    public static BackendApiException FromResponse(HttpStatusCode statusCode, string? reason, string detail) =>
+        FromResponse(BackendOperation.ConnectionStatus, statusCode, reason, detail);
 
     public static UserErrorPresentation ToUserError(Exception exception)
     {
@@ -48,11 +157,39 @@ public static class BackendErrorTranslator
                 backend.Message,
                 IsRetryable(backend) ? UserErrorKind.Retryable : UserErrorKind.Blocking);
         }
-        if (exception is TimeoutException || exception is TaskCanceledException)
+        if (exception is BackendOperationTimeoutException timeout)
         {
             return new UserErrorPresentation(
-                "The backend operation timed out. Check your internet connection and try again.",
+                $"{BackendOperationNames.Label(timeout.Operation)} did not finish within {timeout.Budget.TotalSeconds:0.###} seconds. " +
+                "Its deadline expired; refresh status before trying again.",
                 UserErrorKind.Retryable);
+        }
+        if (exception is BackendCallerCanceledException canceled)
+        {
+            return new UserErrorPresentation(
+                $"{BackendOperationNames.Label(canceled.Operation)} was canceled.",
+                UserErrorKind.Blocking);
+        }
+        if (exception is BackendConnectionStateException state)
+        {
+            return new UserErrorPresentation(state.Message, UserErrorKind.Retryable);
+        }
+        if (exception is BackendMalformedResponseException malformed)
+        {
+            return new UserErrorPresentation(
+                $"{BackendOperationNames.Label(malformed.Operation)} returned an invalid response. " +
+                "Restart the backend before trying again.",
+                UserErrorKind.Blocking);
+        }
+        if (exception is TimeoutException)
+        {
+            return new UserErrorPresentation(
+                "The backend operation reached its deadline. Refresh status before trying again.",
+                UserErrorKind.Retryable);
+        }
+        if (exception is OperationCanceledException)
+        {
+            return new UserErrorPresentation("The backend operation was canceled.", UserErrorKind.Blocking);
         }
         if (exception is HttpRequestException)
         {
@@ -156,9 +293,32 @@ public static class BackendErrorTranslator
             return "Mysterium could not verify identity registration. Check your internet connection and refresh status.";
         }
 
-        return string.IsNullOrWhiteSpace(code)
+        var safeCode = SafeSupportCode(code);
+        return safeCode is null
             ? "The backend rejected the request. Refresh status and try again."
-            : $"The backend rejected the request (support code: {Limit(code, 80)}). Refresh status and try again.";
+            : $"The backend rejected the request (support code: {safeCode}). Refresh status and try again.";
+    }
+
+    private static string? SafeSupportCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        if (code.StartsWith("err_payment", StringComparison.OrdinalIgnoreCase)) return "err_payment";
+
+        foreach (var known in new[]
+        {
+            "err_id_not_registered",
+            "err_id_registration_in_progress",
+            "err_id_unlock",
+            "err_id_import",
+            "err_connection_already_exists",
+            "err_connect",
+            "err_id_registration_status_check",
+            "err_id_blockchain_registration_check",
+        })
+        {
+            if (code.Equals(known, StringComparison.OrdinalIgnoreCase)) return known;
+        }
+        return null;
     }
 
     private static string? FindJsonString(string json, string propertyName)
@@ -200,6 +360,4 @@ public static class BackendErrorTranslator
         }
         return null;
     }
-
-    private static string Limit(string value, int length) => value.Length <= length ? value : value[..length] + "…";
 }

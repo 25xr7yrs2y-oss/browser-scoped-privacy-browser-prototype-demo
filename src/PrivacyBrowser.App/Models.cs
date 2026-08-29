@@ -15,6 +15,8 @@ public sealed record BackendSnapshot(
 {
     public bool IsConnected => Connection.Status.Equals("CONNECTED", StringComparison.OrdinalIgnoreCase);
 
+    public bool IsConnecting => Connection.Status.Equals("CONNECTING", StringComparison.OrdinalIgnoreCase);
+
     public IdentityDetails? Identity => string.IsNullOrWhiteSpace(SelectedIdentityId)
         ? null
         : Identities.FirstOrDefault(identity =>
