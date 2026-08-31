@@ -1,16 +1,16 @@
 # Privacy Browser
 
-Version 1.0.5 is a Windows x64 testing release combining a native .NET/WPF control application,
+Version 1.0.6 is a Windows x64 testing release combining a native .NET/WPF control application,
 an unpacked Mullvad Browser, and the `custom-proxy-build` Myst node from
 `myst-lmprove`. It does not modify the Windows system proxy, DNS servers,
 firewall, or route table.
 
 ## Status
 
-The native integration and portable release packaging are implemented. Version 1.0.5 replaces the conflicting shared
-HTTP timeout with explicit deadlines for readiness, ordinary TequilAPI work, provider discovery, provider connection,
-and graceful stop. It also reconciles connection state after an indeterminate provider-connect deadline before another
-PUT can be issued. The payment-target, navigation, identity, readiness, browser-process, and bundle-integrity hardening
+The native integration and portable release packaging are implemented. Version 1.0.6 keeps the explicit per-operation
+deadlines and safe reconciliation introduced in 1.0.5, fixes proxy-mode route/supervisor isolation in the pinned backend,
+and consistently addresses the app-owned proxy connection as ID 4449 for status and disconnect operations. The
+payment-target, navigation, identity, readiness, browser-process, and bundle-integrity hardening
 from earlier versions remains in place. Packet capture confirms browser payload
 routing through the loopback backend and a Mysterium provider, no direct
 browser TCP/DNS/UDP path, fail-closed behavior before launch and after backend
@@ -66,11 +66,10 @@ vendor/
 
 Other layouts can be supplied with launcher parameters.
 
-Do not leave the current `myst-lmprove` CI installer installed. Testing found
-that it creates an automatic `MysteriumVPNSupervisor` service even though the
-proxy-mode runtime does not need it. Use a copied/unpacked application tree and
-verify that the service is absent before testing. This packaging defect is an
-upstream blocker, not hidden by this launcher.
+The portable package downloads the trusted workflow's pinned raw `myst.exe`.
+It does not include or run the `myst-lmprove` Electron installer and does not
+install `MysteriumVPNSupervisor`. Proxy mode is isolated from the supervisor and
+host routing at both the P2P call site and routing-manager selection.
 
 ## Build
 
@@ -84,7 +83,7 @@ This publishes the WPF app to `app\PrivacyBrowser.exe`. Use
 `-SelfContained` if the target machine does not have the .NET 8 Desktop Runtime.
 
 The executable embeds the official multi-resolution Windows icon and reports
-file/product version `1.0.5`. The native WPF window uses the matching embedded
+file/product version `1.0.6`. The native WPF window uses the matching embedded
 PNG resource so Windows Imaging Component can decode it reliably at startup.
 
 ## Release package
@@ -97,7 +96,7 @@ $env:MYST_RELEASE_TOKEN = "<token with read access to the pinned backend release
 .\tests\Test-ReleasePackage.ps1
 ```
 
-This creates `PrivacyBrowser-1.0.5-windows-x64-portable.zip`, its SHA-256
+This creates `PrivacyBrowser-1.0.6-windows-x64-portable.zip`, its SHA-256
 manifest, and the corresponding `myst-lmprove` source archive. The upstream
 installers are downloaded at pinned hashes and extracted; they are never run.
 

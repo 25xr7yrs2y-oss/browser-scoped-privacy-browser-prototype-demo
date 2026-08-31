@@ -46,8 +46,14 @@ foreach ($needle in @(
         'BackendOperation.ProviderDiscovery',
         'BackendOperation.ProviderConnect',
         'GetConnectionStateAsync(cancellationToken)',
-        'IsConnectOutcomeIndeterminate')) {
+        'IsConnectOutcomeIndeterminate',
+        'ConnectionPath => $"connection?id={ProxyPort}"',
+        '"connection?id={proxy_port}", ConnectionPath')) {
     if (-not $backend.Contains($needle)) { throw "Explicit backend deadline/reconciliation invariant missing: $needle" }
+}
+if ($backend.Contains('HttpMethod.Delete, "connection", "connection"') -or
+    $backend.Contains('BackendOperation.ConnectionStatus, "connection", "connection"')) {
+    throw "App-owned proxy status/disconnect must never default to connection ID 0"
 }
 if ($backend.Contains('Timeout = TimeSpan.FromSeconds(15)') -or $backend.Contains('CancelAfter(TimeSpan.FromSeconds(75))')) {
     throw "A shared or competing timeout can still preempt an operation-specific deadline"

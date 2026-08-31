@@ -33,6 +33,8 @@ public sealed class BackendController : IAsyncDisposable
     public const int ControlPort = 44050;
     public const int ProxyPort = 4449;
 
+    private static string ConnectionPath => $"connection?id={ProxyPort}";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
@@ -180,7 +182,8 @@ public sealed class BackendController : IAsyncDisposable
         var connectionTask = CaptureAsync("connection", async () =>
         {
             var connection = await GetAsync<ConnectionInfo>(
-                BackendOperation.ConnectionStatus, "connection", "connection", _timeouts.Ordinary, cancellationToken);
+                BackendOperation.ConnectionStatus, "connection?id={proxy_port}", ConnectionPath,
+                _timeouts.Ordinary, cancellationToken);
             ObserveConnectionState(connection);
             return connection;
         }, cancellationToken);
@@ -429,8 +432,8 @@ public sealed class BackendController : IAsyncDisposable
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
-        await SendAsync(BackendOperation.ProviderDisconnect, HttpMethod.Delete, "connection", "connection", null,
-            _timeouts.Ordinary, cancellationToken);
+        await SendAsync(BackendOperation.ProviderDisconnect, HttpMethod.Delete,
+            "connection?id={proxy_port}", ConnectionPath, null, _timeouts.Ordinary, cancellationToken);
         _connectOutcomeIndeterminate = false;
     }
 
@@ -667,7 +670,7 @@ public sealed class BackendController : IAsyncDisposable
     private async Task<ConnectionInfo> GetConnectionStateAsync(CancellationToken cancellationToken)
     {
         var connection = await GetAsync<ConnectionInfo>(BackendOperation.ConnectionStatus,
-            "connection", "connection", _timeouts.Ordinary, cancellationToken);
+            "connection?id={proxy_port}", ConnectionPath, _timeouts.Ordinary, cancellationToken);
         ObserveConnectionState(connection);
         return connection;
     }

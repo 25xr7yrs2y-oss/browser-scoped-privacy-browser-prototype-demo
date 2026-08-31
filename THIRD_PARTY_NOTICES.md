@@ -1,6 +1,6 @@
 # Third-Party Components
 
-The repository source does not vendor third-party binaries. The version 1.0.5
+The repository source does not vendor third-party binaries. The version 1.0.6
 portable release redistributes pinned, unmodified runtime files as described
 below and in `docs/DEPENDENCIES.md` inside the package.
 
@@ -17,12 +17,12 @@ below and in `docs/DEPENDENCIES.md` inside the package.
 
 - Project: <https://github.com/25xr7yrs2y-oss/myst-lmprove>
 - Audited branch: `custom-proxy-build`
-- Audited commit: `227d63b052764595039c64beab9f3415cf01abdb`
+- Audited commit: `7944a4c634834aac10a4e8e49934e326ac3f0e7a`
 - Desktop license: MIT; bundled custom node: GNU General Public License v3
 - Distribution: only the required `myst.exe` node is included; the Electron
   shell, supervisor, and installer are excluded.
-- Corresponding source: attached to the version 1.0.5 release as
-  `PrivacyBrowser-1.0.5-myst-lmprove-source-227d63b.tar.gz`.
+- Corresponding source: attached to the version 1.0.6 release as
+  `PrivacyBrowser-1.0.6-myst-lmprove-source-7944a4c.tar.gz`.
 
 Users must review and comply with the licenses and terms shipped by each
 third-party component.

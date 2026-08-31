@@ -10,7 +10,7 @@ on:
       tag:
         description: Existing release tag
         required: true
-        default: v1.0.5
+        default: v1.0.6
         type: string
 
 permissions:
@@ -28,22 +28,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.run_id }}
-        run: gh run download "$RUN_ID" --name PrivacyBrowser-1.0.5-release-assets --dir release
+          TAG: ${{ inputs.tag }}
+        run: |
+          test "$TAG" = "v1.0.6"
+          test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$(git rev-parse HEAD)"
+          test "$(gh run view "$RUN_ID" --json conclusion --jq .conclusion)" = "success"
+          test "$(gh run view "$RUN_ID" --json workflowName --jq .workflowName)" = "Release package"
+          test "$(gh run view "$RUN_ID" --json headSha --jq .headSha)" = "$(git rev-parse HEAD)"
+          gh run download "$RUN_ID" --name PrivacyBrowser-1.0.6-release-assets --dir release
       - name: Confirm expected release files
         run: |
-          test -s release/PrivacyBrowser-1.0.5-windows-x64-portable.zip
-          test -s release/PrivacyBrowser-1.0.5-myst-lmprove-source-227d63b.tar.gz
-          test -s release/PrivacyBrowser-1.0.5-SHA256SUMS.txt
+          test -s release/PrivacyBrowser-1.0.6-windows-x64-portable.zip
+          test -s release/PrivacyBrowser-1.0.6-myst-lmprove-source-7944a4c.tar.gz
+          test -s release/PrivacyBrowser-1.0.6-SHA256SUMS.txt
           cd release
-          sha256sum --check PrivacyBrowser-1.0.5-SHA256SUMS.txt
+          sha256sum --check PrivacyBrowser-1.0.6-SHA256SUMS.txt
       - name: Upload assets and publish release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/* --clobber
-            gh release edit "$TAG" --title "Privacy Browser Prototype Demo v1.0.5" --notes-file docs/RELEASE_NOTES_1.0.5.md --draft=false --prerelease=true
-          else
-            gh release create "$TAG" release/* --verify-tag --title "Privacy Browser Prototype Demo v1.0.5" --notes-file docs/RELEASE_NOTES_1.0.5.md --prerelease
+            echo "Release $TAG already exists; refusing to replace immutable release assets." >&2
+            exit 1
           fi
+          gh release create "$TAG" release/* --verify-tag --title "Privacy Browser Prototype Demo v1.0.6" --notes-file docs/RELEASE_NOTES_1.0.6.md --prerelease

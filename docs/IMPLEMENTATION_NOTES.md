@@ -28,7 +28,7 @@ Exact source checked: branch `mullvad-browser-140.12.0esr-15.0-1`, commit
 
 ## Backend source audit
 
-Audited branch: `25xr7yrs2y-oss/myst-lmprove@227d63b`, branch
+Audited branch: `25xr7yrs2y-oss/myst-lmprove@7944a4c`, branch
 `custom-proxy-build`.
 
 - Previous desktop entry: Electron `src/main/index.tsx` started a loopback web
@@ -45,8 +45,11 @@ Audited branch: `25xr7yrs2y-oss/myst-lmprove@227d63b`, branch
 - Tunnel model: proxy mode selects `proxyclient.New()`, which uses WireGuard's
   userspace netstack (`CreateNetTUN`) and an HTTP server. It does not select the
   Wintun/kernel path.
-- System routing: proxy mode bypasses tunnel reconnect/IP checks; Windows route
-  add/delete/default-route helpers are no-ops in this fork.
+- System routing: proxy mode skips peer route exclusion at the P2P call site and
+  selects a no-op routing manager, so it does not discover or mutate host routes
+  or access the supervisor. Actual system-tunnel modes keep route protection;
+  initial gateway discovery is bounded, backed off, cancelable, and returns a
+  specific error when unavailable.
 - Privilege: the selected proxyclient path is userspace and is intended to run
   without administrator rights. This still needs real non-admin validation.
 - Control plane: discovery, identity, registration/payment, monitoring, and
@@ -101,9 +104,9 @@ CI decodes both the PNG and every ICO frame through WPF's actual
 `BitmapDecoder`, preventing a shell-only icon check from missing another BAML
 startup failure.
 
-### Packaging discrepancy found in live testing
+### Historical packaging discrepancy found in live testing
 
-The successful CI artifact for commit `227d63b` installs an automatic Windows
+The older CI installer artifact for commit `227d63b` installed an automatic Windows
 service named `MysteriumVPNSupervisor`. This contradicts the fork README's
 "No supervisor install" claim. The tested service executable was
 `resources/app.asar.unpacked/node_modules/@mysteriumnetwork/node/bin/win/x64/myst_supervisor.exe
@@ -111,6 +114,11 @@ service named `MysteriumVPNSupervisor`. This contradicts the fork README's
 proxyclient path, but the installer is not acceptable for a browser-scoped
 package as-is. The test installation was uninstalled and the service was
 verified absent.
+
+Version 1.0.6 no longer extracts the backend from that installer. Packaging
+pins the trusted workflow's raw `myst-windows-x64.exe` release asset and verifies
+its SHA-256 before copying it into the portable bundle; no supervisor executable
+or installer is included or executed.
 
 ## Tor-specific classification
 

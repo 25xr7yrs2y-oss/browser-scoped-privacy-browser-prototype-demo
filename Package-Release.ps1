@@ -5,16 +5,16 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$version = "1.0.5"
+$version = "1.0.6"
 $packageBase = "PrivacyBrowser-$version-windows-x64-portable"
 $portableName = "$packageBase.zip"
-$sourceName = "PrivacyBrowser-$version-myst-lmprove-source-227d63b.tar.gz"
+$sourceName = "PrivacyBrowser-$version-myst-lmprove-source-7944a4c.tar.gz"
 $checksumName = "PrivacyBrowser-$version-SHA256SUMS.txt"
 $mullvadUrl = "https://github.com/mullvad/mullvad-browser/releases/download/15.0.14/mullvad-browser-windows-x86_64-15.0.14.exe"
 $mullvadHash = "56d5e332b1e780c6413c1a88e7b0a855ec1df5a400a26d92f08585637bc75c02"
-$mystAssetUrl = "https://api.github.com/repos/25xr7yrs2y-oss/myst-lmprove/releases/assets/445498489"
-$mystHash = "8efe205063ea0fee05adb2d24012b4d3d843b6eacc4925a3cf3a3289625647da"
-$mystCommit = "227d63b052764595039c64beab9f3415cf01abdb"
+$mystAssetUrl = "https://api.github.com/repos/25xr7yrs2y-oss/myst-lmprove/releases/assets/537461102"
+$mystHash = "5b761c82022d77bd1229ebb9e5e7bc35353a7e3c6b842e33967a643d181c25b2"
+$mystCommit = "7944a4c634834aac10a4e8e49934e326ac3f0e7a"
 
 if (-not $IsWindows -and $PSVersionTable.PSEdition -eq "Core") {
     throw "Release packaging must run on Windows."
@@ -82,8 +82,8 @@ try {
     }
     New-Item -ItemType Directory -Path (Join-Path $packageRoot "config"), (Join-Path $packageRoot "docs") -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "config\policies.json") -Destination (Join-Path $packageRoot "config\policies.json")
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs\DEPENDENCIES_1.0.5.md") -Destination (Join-Path $packageRoot "docs\DEPENDENCIES.md")
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs\SOURCE_OFFER_1.0.5.md") -Destination (Join-Path $packageRoot "docs\SOURCE_OFFER.md")
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs\DEPENDENCIES_1.0.6.md") -Destination (Join-Path $packageRoot "docs\DEPENDENCIES.md")
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs\SOURCE_OFFER_1.0.6.md") -Destination (Join-Path $packageRoot "docs\SOURCE_OFFER.md")
 
     $mullvadInstaller = Join-Path $downloads "mullvad-browser-15.0.14.exe"
     Get-VerifiedDownload -Uri $mullvadUrl -Destination $mullvadInstaller -ExpectedSha256 $mullvadHash
@@ -100,24 +100,11 @@ try {
         Accept = "application/octet-stream"
         "X-GitHub-Api-Version" = "2022-11-28"
     }
-    $mystInstaller = Join-Path $downloads "MysteriumDark-Setup-0.0.0-snapshot.exe"
-    Get-VerifiedDownload -Uri $mystAssetUrl -Destination $mystInstaller -ExpectedSha256 $mystHash -Headers $githubHeaders
-    $mystOuter = Join-Path $extract "myst-outer"
-    Invoke-SevenZipExtract -Archive $mystInstaller -Destination $mystOuter
-    $appArchive = Get-ChildItem -LiteralPath $mystOuter -Recurse -File -Filter "app-64.7z" | Select-Object -First 1
-    $mystSearchRoot = $mystOuter
-    if ($appArchive) {
-        $mystApp = Join-Path $extract "myst-app"
-        Invoke-SevenZipExtract -Archive $appArchive.FullName -Destination $mystApp
-        $mystSearchRoot = $mystApp
-    }
-    $mystExe = Get-ChildItem -LiteralPath $mystSearchRoot -Recurse -File -Filter "myst.exe" |
-        Where-Object { $_.FullName -match '[\\/]node[\\/]bin[\\/]win[\\/]x64[\\/]myst\.exe$' } |
-        Select-Object -First 1
-    if (-not $mystExe) { throw "The pinned myst-lmprove installer did not contain the expected x64 myst.exe." }
+    $mystExe = Join-Path $downloads "myst-windows-x64.exe"
+    Get-VerifiedDownload -Uri $mystAssetUrl -Destination $mystExe -ExpectedSha256 $mystHash -Headers $githubHeaders
     $mystDestination = Join-Path $packageRoot "vendor\myst-lmprove\resources\app.asar.unpacked\node_modules\@mysteriumnetwork\node\bin\win\x64"
     New-Item -ItemType Directory -Path $mystDestination -Force | Out-Null
-    Copy-Item -LiteralPath $mystExe.FullName -Destination (Join-Path $mystDestination "myst.exe")
+    Copy-Item -LiteralPath $mystExe -Destination (Join-Path $mystDestination "myst.exe")
 
     # The archive checksum authenticates the download. This in-bundle manifest then
     # detects missing, stale, or mixed critical components after users extract it.
