@@ -18,6 +18,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("connect timeout reconciliation verifies CONNECTED", ConnectTimeoutReconcilesConnected),
     ("retry that reconciles CONNECTED does not issue another PUT", ConnectedRetryDoesNotDuplicatePut),
     ("connect timeout reconciliation surfaces final failure state", ConnectTimeoutReconcilesFailedState),
+    ("proxy connection operations consistently use ID 4449", ProxyConnectionOperationsUseProxyPortId),
     ("malformed and backend HTTP responses remain distinct", MalformedAndHttpErrorsRemainDistinct),
 };
 
@@ -323,6 +324,55 @@ static async Task ConnectTimeoutReconcilesFailedState()
     True(error.Message.Contains("failed", StringComparison.OrdinalIgnoreCase));
     True(!error.Message.Contains(providerSecret, StringComparison.Ordinal));
     True(!controller.IsConnectOutcomeIndeterminate);
+}
+
+static async Task ProxyConnectionOperationsUseProxyPortId()
+{
+    var putCount = 0;
+    var statusCount = 0;
+    var deleteCount = 0;
+    var observedProxyPort = false;
+    var timeouts = TestTimeouts(ordinaryMs: 80, discoveryMs: 120, connectMs: 150);
+    await using var controller = Controller(new FakeHandler(async (request, _) =>
+    {
+        var path = request.RequestUri!.AbsolutePath;
+        if (request.Method == HttpMethod.Put && path == "/connection")
+        {
+            putCount++;
+            Equal(string.Empty, request.RequestUri.Query);
+            var body = await request.Content!.ReadAsStringAsync();
+            observedProxyPort = body.Contains("\"proxy_port\":4449", StringComparison.Ordinal);
+            return Response(HttpStatusCode.OK, "{}");
+        }
+        if (request.Method == HttpMethod.Get && path == "/connection")
+        {
+            statusCount++;
+            Equal("?id=4449", request.RequestUri.Query);
+            return Response(HttpStatusCode.OK, "{\"status\":\"NOT_CONNECTED\"}");
+        }
+        if (request.Method == HttpMethod.Delete && path == "/connection")
+        {
+            deleteCount++;
+            Equal("?id=4449", request.RequestUri.Query);
+            return Response(HttpStatusCode.OK, "{}");
+        }
+        if (request.Method == HttpMethod.Get && path == "/healthcheck")
+            return Response(HttpStatusCode.OK, "{}");
+        if (request.Method == HttpMethod.Get && path == "/identities")
+            return Response(HttpStatusCode.OK, "{\"identities\":[]}");
+        if (request.Method == HttpMethod.Get && path == "/terms")
+            return Response(HttpStatusCode.OK, "{}");
+        return Response(HttpStatusCode.OK, "{}");
+    }), timeouts);
+
+    await controller.ConnectAsync("identity", "passphrase", Provider());
+    await controller.GetSnapshotAsync();
+    await controller.DisconnectAsync();
+
+    Equal(1, putCount);
+    Equal(1, statusCount);
+    Equal(1, deleteCount);
+    True(observedProxyPort);
 }
 
 static async Task MalformedAndHttpErrorsRemainDistinct()
