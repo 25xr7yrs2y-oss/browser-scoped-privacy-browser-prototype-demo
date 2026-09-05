@@ -3,6 +3,7 @@ using PrivacyBrowser.App;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("registered adapter matching is exact and fail-closed", RegisteredAdapterMatchingIsExactAndFailClosed),
     ("HTTPS without an explicit port", () => Accept("https://payments.example/order/1")),
     ("HTTPS with explicit port 443", () => Accept("https://payments.example:443/order/1")),
     ("mixed-case HTTPS scheme", () => Accept("HtTpS://payments.example/order/1")),
@@ -28,6 +29,8 @@ var tests = new (string Name, Action Run)[]
     ("unrelated-only URL is rejected", () => Reject("coingate", "coingate", "{\"helpUrl\":\"https://evil.example/\"}")),
     ("duplicate exact field", () => Reject("coingate", "coingate", "{\"paymentUrl\":\"https://payments.example/one\",\"paymentUrl\":\"https://payments.example/two\"}")),
     ("case-shadowed field", () => Reject("coingate", "coingate", "{\"paymentUrl\":\"https://payments.example/one\",\"PaymentUrl\":\"https://evil.example/two\"}")),
+    ("fragment", () => Reject("coingate", "coingate", "{\"paymentUrl\":\"https://payments.example/order/1#checkout\"}")),
+    ("empty fragment", () => Reject("coingate", "coingate", "{\"paymentUrl\":\"https://payments.example/order/1#\"}")),
     ("leading whitespace", () => Reject("coingate", "coingate", "{\"paymentUrl\":\" https://payments.example/order/1\"}")),
     ("embedded control character", () => Reject("coingate", "coingate", "{\"paymentUrl\":\"https://payments.example/order/\\u0001\"}")),
 };
@@ -49,17 +52,22 @@ foreach (var test in tests)
 
 if (failures > 0)
 {
-    Console.Error.WriteLine($"{failures} payment target parser test(s) failed.");
+    Console.Error.WriteLine($"{failures} payment gateway adapter test(s) failed.");
     return 1;
 }
 
-Console.WriteLine($"PASS: all {tests.Length} payment target parser tests passed.");
+Console.WriteLine($"PASS: all {tests.Length} payment gateway adapter tests passed.");
 return 0;
 
 static void Accept(string value)
 {
     var data = ParseData($"{{\"paymentUrl\":{JsonSerializer.Serialize(value)}}}");
-    var uri = PaymentTargetParser.GetPaymentUri("coingate", "coingate", data);
+    var target = PaymentGatewayRegistry.ParsePaymentTarget("coingate", "coingate", data);
+    var uri = target.PaymentUri;
+    if (!target.GatewayName.Equals("coingate", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException($"Adapter returned the wrong canonical gateway: {target.GatewayName}");
+    }
     if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
         !uri.IsAbsoluteUri ||
         !uri.IsDefaultPort ||
@@ -74,18 +82,33 @@ static void Reject(string expectedGateway, string responseGateway, string json)
     var data = ParseData(json);
     try
     {
-        var result = PaymentTargetParser.GetPaymentUri(expectedGateway, responseGateway, data);
-        throw new InvalidOperationException($"Parser unexpectedly accepted {result}.");
+        var result = PaymentGatewayRegistry.ParsePaymentTarget(expectedGateway, responseGateway, data);
+        throw new InvalidOperationException($"Registry unexpectedly accepted {result.PaymentUri}.");
     }
-    catch (InvalidOperationException exception) when (!exception.Message.StartsWith("Parser unexpectedly accepted", StringComparison.Ordinal))
+    catch (InvalidOperationException exception) when (!exception.Message.StartsWith("Registry unexpectedly accepted", StringComparison.Ordinal))
     {
+    }
+}
+
+static void RegisteredAdapterMatchingIsExactAndFailClosed()
+{
+    if (!PaymentGatewayRegistry.SupportsGateway("coingate"))
+    {
+        throw new InvalidOperationException("The verified CoinGate adapter was not registered.");
+    }
+    foreach (var unsupported in new string?[] { null, "", "CoinGate", "stripe", "paypal" })
+    {
+        if (PaymentGatewayRegistry.SupportsGateway(unsupported))
+        {
+            throw new InvalidOperationException($"An unregistered gateway was accepted: {unsupported}");
+        }
     }
 }
 
 static void UnrelatedUrlIsNotSelected()
 {
     var data = ParseData("{\"helpUrl\":\"https://evil.example/\",\"paymentUrl\":\"https://payments.example/order/1\",\"nested\":{\"url\":\"https://also-evil.example/\"}}");
-    var uri = PaymentTargetParser.GetPaymentUri("coingate", "coingate", data);
+    var uri = PaymentGatewayRegistry.ParsePaymentTarget("coingate", "coingate", data).PaymentUri;
     if (!uri.Host.Equals("payments.example", StringComparison.Ordinal))
     {
         throw new InvalidOperationException($"Parser selected the wrong host: {uri.Host}");

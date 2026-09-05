@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("provider connect may outlive ordinary 15 second budget", ProviderConnectMayOutliveOrdinaryBudget),
     ("provider connect deadline reconciles instead of issuing a duplicate", ProviderConnectDeadlineReconciles),
     ("provider discovery may outlive ordinary 15 second budget", ProviderDiscoveryMayOutliveOrdinaryBudget),
+    ("payment gateway discovery and creation fail closed", PaymentGatewayDiscoveryAndCreationFailClosed),
     ("ordinary operation deadline is enforced", OrdinaryDeadlineIsEnforced),
     ("caller cancellation differs from deadline expiry", CallerCancellationDiffersFromTimeout),
     ("canceled connect remains indeterminate until reconciled", CanceledConnectRequiresReconciliation),
@@ -94,6 +95,40 @@ static async Task ProviderConnectDeadlineReconciles()
         controller.ConnectAsync("identity", "passphrase", Provider()));
     Equal("NOT_CONNECTED", error.SanitizedState);
     Equal(1, putCount);
+}
+
+static async Task PaymentGatewayDiscoveryAndCreationFailClosed()
+{
+    var requestCount = 0;
+    var timeouts = TestTimeouts(ordinaryMs: 80, discoveryMs: 120, connectMs: 150);
+    await using var controller = Controller(new FakeHandler((request, _) =>
+    {
+        requestCount++;
+        Equal(HttpMethod.Get, request.Method);
+        Equal("/v2/payment-order-gateways", request.RequestUri!.AbsolutePath);
+        Equal("?options_currency=MYST", request.RequestUri.Query);
+        return Task.FromResult(Response(HttpStatusCode.OK, """
+            [
+              {"name":"coingate","order_options":{"minimum":1,"suggested":[2]},"currencies":["USD"]},
+              {"name":"stripe","order_options":{"minimum":1,"suggested":[2]},"currencies":["USD"]},
+              {"name":"CoinGate","order_options":{"minimum":1,"suggested":[2]},"currencies":["USD"]}
+            ]
+            """));
+    }), timeouts);
+
+    var gateways = await controller.GetPaymentGatewaysAsync();
+    Equal(1, gateways.Count);
+    Equal(CoinGatePaymentGatewayAdapter.CanonicalGatewayName, gateways[0].Name);
+    Equal(1, requestCount);
+
+    var unsupported = new PaymentGateway
+    {
+        Name = "stripe",
+        Currencies = ["USD"],
+    };
+    await ThrowsAsync<InvalidOperationException>(() => controller.CreatePaymentOrderAsync(
+        "identity", unsupported, 2m, "USD", "US", ""));
+    Equal(1, requestCount);
 }
 
 static async Task ProviderDiscoveryMayOutliveOrdinaryBudget()

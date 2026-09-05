@@ -315,7 +315,7 @@ public sealed class BackendController : IAsyncDisposable
             "v2/payment-order-gateways", "v2/payment-order-gateways?options_currency=MYST",
             _timeouts.Ordinary, cancellationToken);
         return gateways
-            .Where(g => PaymentTargetParser.SupportsGateway(g.Name) && g.Currencies.Count > 0)
+            .Where(g => PaymentGatewayRegistry.SupportsGateway(g.Name) && g.Currencies.Count > 0)
             .ToArray();
     }
 
@@ -328,7 +328,7 @@ public sealed class BackendController : IAsyncDisposable
         string state,
         CancellationToken cancellationToken = default)
     {
-        if (!PaymentTargetParser.SupportsGateway(gateway.Name))
+        if (!PaymentGatewayRegistry.SupportsGateway(gateway.Name))
         {
             throw new InvalidOperationException("The selected payment gateway is not supported.");
         }

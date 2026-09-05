@@ -6,7 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../src/PrivacyBrowser.App/PaymentTargetParser.cs"
-             Link="PaymentTargetParser.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/IPaymentGatewayAdapter.cs" Link="IPaymentGatewayAdapter.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/PaymentGatewayRegistry.cs" Link="PaymentGatewayRegistry.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/PaymentTarget.cs" Link="PaymentTarget.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/PaymentUriValidator.cs" Link="PaymentUriValidator.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/CoinGatePaymentGatewayAdapter.cs" Link="CoinGatePaymentGatewayAdapter.cs" />
   </ItemGroup>
 </Project>
