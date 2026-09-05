@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$version = "1.0.6"
+$version = "1.0.7"
 $packageBase = "PrivacyBrowser-$version-windows-x64-portable"
 $portableName = "$packageBase.zip"
 $sourceName = "PrivacyBrowser-$version-myst-lmprove-source-7944a4c.tar.gz"
@@ -82,8 +82,8 @@ try {
     }
     New-Item -ItemType Directory -Path (Join-Path $packageRoot "config"), (Join-Path $packageRoot "docs") -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "config\policies.json") -Destination (Join-Path $packageRoot "config\policies.json")
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs\DEPENDENCIES_1.0.6.md") -Destination (Join-Path $packageRoot "docs\DEPENDENCIES.md")
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs\SOURCE_OFFER_1.0.6.md") -Destination (Join-Path $packageRoot "docs\SOURCE_OFFER.md")
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs\DEPENDENCIES_1.0.7.md") -Destination (Join-Path $packageRoot "docs\DEPENDENCIES.md")
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs\SOURCE_OFFER_1.0.7.md") -Destination (Join-Path $packageRoot "docs\SOURCE_OFFER.md")
 
     $mullvadInstaller = Join-Path $downloads "mullvad-browser-15.0.14.exe"
     Get-VerifiedDownload -Uri $mullvadUrl -Destination $mullvadInstaller -ExpectedSha256 $mullvadHash

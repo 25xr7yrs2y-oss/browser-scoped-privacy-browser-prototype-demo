@@ -10,7 +10,11 @@
     <Compile Include="../../src/PrivacyBrowser.App/BackendController.cs" Link="BackendController.cs" />
     <Compile Include="../../src/PrivacyBrowser.App/BackendErrors.cs" Link="BackendErrors.cs" />
     <Compile Include="../../src/PrivacyBrowser.App/Models.cs" Link="Models.cs" />
-    <Compile Include="../../src/PrivacyBrowser.App/PaymentTargetParser.cs" Link="PaymentTargetParser.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/IPaymentGatewayAdapter.cs" Link="IPaymentGatewayAdapter.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/PaymentGatewayRegistry.cs" Link="PaymentGatewayRegistry.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/PaymentTarget.cs" Link="PaymentTarget.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/PaymentUriValidator.cs" Link="PaymentUriValidator.cs" />
+    <Compile Include="../../src/PrivacyBrowser.App/CoinGatePaymentGatewayAdapter.cs" Link="CoinGatePaymentGatewayAdapter.cs" />
     <Compile Include="../../src/PrivacyBrowser.App/TcpListenerInspector.cs" Link="TcpListenerInspector.cs" />
   </ItemGroup>
 </Project>

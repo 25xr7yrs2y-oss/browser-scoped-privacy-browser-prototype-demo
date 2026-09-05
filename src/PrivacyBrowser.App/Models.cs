@@ -294,6 +294,6 @@ public sealed class PaymentOrder
     [JsonPropertyName("public_gateway_data")]
     public JsonElement PublicGatewayData { get; set; }
 
-    public Uri GetPaymentUri(string expectedGatewayName) =>
-        PaymentTargetParser.GetPaymentUri(expectedGatewayName, GatewayName, PublicGatewayData);
+    public PaymentTarget GetPaymentTarget(string expectedGatewayName) =>
+        PaymentGatewayRegistry.ParsePaymentTarget(expectedGatewayName, GatewayName, PublicGatewayData);
 }

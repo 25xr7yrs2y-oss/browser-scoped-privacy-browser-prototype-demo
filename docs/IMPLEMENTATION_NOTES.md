@@ -64,6 +64,12 @@ Audited branch: `25xr7yrs2y-oss/myst-lmprove@7944a4c`, branch
   forced refresh is `PUT /identities/{id}/balance/refresh`; available payment
   gateways and order creation are provided by `/v2/payment-order-gateways` and
   `/v2/identities/{id}/{gateway}/payment-order`.
+- Payment targets: the client intersects Myst's `options_currency=MYST`
+  discovery response with a case-exact adapter registry and checks registry
+  membership again before order creation. Each adapter owns a canonical gateway
+  name and strict top-level response parser. Version 1.0.7 registers only the
+  verified CoinGate `paymentUrl` contract; unknown gateways fail closed and no
+  recursive URL search is used.
 - Provider contracts: WireGuard proposals are loaded from `/proposals` with
   `service_type=wireguard` and `access_policy=all`. The native adapter validates
   and deduplicates results before presenting them.
@@ -115,7 +121,7 @@ proxyclient path, but the installer is not acceptable for a browser-scoped
 package as-is. The test installation was uninstalled and the service was
 verified absent.
 
-Version 1.0.6 no longer extracts the backend from that installer. Packaging
+Version 1.0.7 continues the 1.0.6 packaging change and does not extract the backend from that installer. Packaging
 pins the trusted workflow's raw `myst-windows-x64.exe` release asset and verifies
 its SHA-256 before copying it into the portable bundle; no supervisor executable
 or installer is included or executed.

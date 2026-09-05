@@ -54,7 +54,7 @@ foreach ($forbidden in @('new BackendController(', 'new BrowserLauncher(', 'new 
 }
 
 foreach ($securityMarker in @('PromptForExistingPassphrase', 'TakePassphrase()', '_browserReadiness.CanLaunch',
-        'PaymentTargetParser.SupportsGateway(g.Name)')) {
+        'PaymentGatewayRegistry.SupportsGateway(g.Name)')) {
     $allRelevantSource = $windowCode + (Get-Content (Join-Path $sourceRoot "BackendController.cs") -Raw) +
         (Get-Content (Join-Path $sourceRoot "TopUpWindow.xaml.cs") -Raw)
     if (-not $allRelevantSource.Contains($securityMarker)) {

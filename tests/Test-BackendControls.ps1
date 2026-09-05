@@ -6,7 +6,12 @@ $models = Get-Content (Join-Path $sourceRoot "Models.cs") -Raw
 $errors = Get-Content (Join-Path $sourceRoot "BackendErrors.cs") -Raw
 $window = Get-Content (Join-Path $sourceRoot "MainWindow.xaml") -Raw
 $topUpCode = Get-Content (Join-Path $sourceRoot "TopUpWindow.xaml.cs") -Raw
-$paymentParser = Get-Content (Join-Path $sourceRoot "PaymentTargetParser.cs") -Raw
+$gatewayAdapterContract = Get-Content (Join-Path $sourceRoot "IPaymentGatewayAdapter.cs") -Raw
+$gatewayRegistry = Get-Content (Join-Path $sourceRoot "PaymentGatewayRegistry.cs") -Raw
+$coinGateAdapter = Get-Content (Join-Path $sourceRoot "CoinGatePaymentGatewayAdapter.cs") -Raw
+$paymentUriValidator = Get-Content (Join-Path $sourceRoot "PaymentUriValidator.cs") -Raw
+$paymentTarget = Get-Content (Join-Path $sourceRoot "PaymentTarget.cs") -Raw
+$paymentCode = $gatewayAdapterContract + $gatewayRegistry + $coinGateAdapter + $paymentUriValidator + $paymentTarget
 $windowCode = Get-Content (Join-Path $sourceRoot "MainWindow.xaml.cs") -Raw
 $topUp = Get-Content (Join-Path $sourceRoot "TopUpWindow.xaml") -Raw
 
@@ -79,30 +84,44 @@ if (-not $windowCode.Contains('registrationReady') -or
 }
 
 foreach ($needle in @(
-        'if (!PaymentTargetParser.SupportsGateway(gateway.Name))',
-        'PaymentTargetParser.SupportsGateway(g.Name)',
-        'GetPaymentUri(gateway.Name)')) {
+        'if (!PaymentGatewayRegistry.SupportsGateway(gateway.Name))',
+        'PaymentGatewayRegistry.SupportsGateway(g.Name)',
+        'GetPaymentTarget(gateway.Name)')) {
     if (-not ($backend + $topUpCode).Contains($needle)) {
         throw "Gateway-bound payment target control missing: $needle"
     }
 }
 foreach ($forbidden in @('FindUri(', 'GetRawText()')) {
-    if (($models + $topUpCode).Contains($forbidden)) {
+    if (($models + $topUpCode + $paymentCode).Contains($forbidden)) {
         throw "Unsafe payment response handling remains: $forbidden"
     }
 }
-if (-not $paymentParser.Contains('CoinGatePaymentUrlField = "paymentUrl"') -or
-    -not $paymentParser.Contains('Uri.UriSchemeHttps') -or
-    -not $paymentParser.Contains('uri.UserInfo') -or
-    -not $paymentParser.Contains('uri.IsDefaultPort') -or
-    -not $paymentParser.Contains('HasExplicitEmptyPort(value)')) {
-    throw "Payment target parser security invariant missing"
+foreach ($needle in @('IPaymentGatewayAdapter',
+        '[CoinGatePaymentGatewayAdapter.CanonicalGatewayName] = new CoinGatePaymentGatewayAdapter()',
+        'new Dictionary<string, IPaymentGatewayAdapter>(StringComparer.Ordinal)',
+        'Adapters.TryGetValue(expectedGatewayName',
+        'string.Equals(responseGatewayName, adapter.GatewayName, StringComparison.Ordinal)')) {
+    if (-not $paymentCode.Contains($needle)) { throw "Payment gateway registry invariant missing: $needle" }
+}
+foreach ($needle in @('CanonicalGatewayName = "coingate"', 'PaymentUrlField = "paymentUrl"',
+        'StringComparison.OrdinalIgnoreCase', 'property.NameEquals(PaymentUrlField)', 'matchingFields != 1')) {
+    if (-not $coinGateAdapter.Contains($needle)) { throw "CoinGate response contract invariant missing: $needle" }
+}
+foreach ($needle in @('Uri.UriSchemeHttps', 'uri.UserInfo', 'uri.IsDefaultPort',
+        'HasExplicitEmptyPort(value)', "value.Contains('#')", 'char.IsWhiteSpace(character)', 'char.IsControl(character)')) {
+    if (-not $paymentUriValidator.Contains($needle)) { throw "Payment URI security invariant missing: $needle" }
 }
 if (-not $topUpCode.Contains('_paymentUri = null;') -or
     -not $topUpCode.Contains('CreatedOrder = null;') -or
     $topUpCode.IndexOf('_paymentUri = null;', [StringComparison]::Ordinal) -gt
         $topUpCode.IndexOf('_backend.CreatePaymentOrderAsync(', [StringComparison]::Ordinal)) {
     throw "A new payment-order attempt does not clear the previously validated target"
+}
+if ($topUpCode.IndexOf('CreatedOrder = order;', [StringComparison]::Ordinal) -lt
+        $topUpCode.IndexOf('order.GetPaymentTarget(gateway.Name);', [StringComparison]::Ordinal) -or
+    $topUpCode.IndexOf('_paymentUri = paymentTarget.PaymentUri;', [StringComparison]::Ordinal) -lt
+        $topUpCode.IndexOf('order.GetPaymentTarget(gateway.Name);', [StringComparison]::Ordinal)) {
+    throw "Payment order state is committed before the gateway-bound target is validated"
 }
 
 dotnet run --project (Join-Path $root "tests\PrivacyBrowser.PaymentTargetParser.Tests\PrivacyBrowser.PaymentTargetParser.Tests.csproj") --configuration Release
